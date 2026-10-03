@@ -139,6 +139,8 @@ reported; history is trimmed first if space runs short.
   The password is rotated when this scraper goes live.
 - Workflows: `permissions: contents: read`, no `pull_request_target`, actions
   pinned to commit SHAs, secrets unavailable to fork pull requests.
+  The one exception is a `report` job that commits a run summary to a `status`
+  branch; it has write access to the repo and receives no secrets.
 - Secret scanning and push protection enabled. Dependabot for Python packages.
 - Store affiliate codes are not in this repo; they stay on the site side.
 
