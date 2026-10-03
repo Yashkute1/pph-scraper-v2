@@ -1,0 +1,27 @@
+name: Capture fixtures
+# Maintenance only: refreshes the saved listing pages the adapter tests parse.
+on:
+  workflow_dispatch:
+  push:
+    branches: [capture]
+permissions:
+  contents: write          # commits fixtures back to the capture branch; this job uses no secrets
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: scrapling install
+      - run: python -m tools.capture_fixtures | tee tests/fixtures/html/_capture.log
+      - run: |
+          git config user.name "pph-bot"
+          git config user.email "pph-bot@users.noreply.github.com"
+          git add tests/fixtures/html
+          git commit -m "chore: refresh listing fixtures [skip ci]" || true
+          git push
