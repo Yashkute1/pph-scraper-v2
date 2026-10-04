@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from . import DB_NAME
 from .adapters import ADAPTERS
 from .adapters.common import EmptyListingError
-from .fetch import BlockedError, Fetcher_
+from .fetch import BlockedError, Fetcher_, TimeBudgetExceeded
 from .normalize import normalize
 from .stores import STORES
 from . import store_db
@@ -53,6 +53,8 @@ def scrape(store, dry_run=False, max_pages=None, time_budget=None, db=None, now=
         cfg["max_pages"] = max_pages
     fetcher = fetcher or Fetcher_(cfg["mode"], cfg["delay"])
     started, t0 = now or _utcnow(), clock()
+    if time_budget and hasattr(fetcher, "deadline"):
+        fetcher.deadline = t0 + time_budget          # enforced at every request, even when nothing is yielded
     offers, blocked, complete, note = [], False, True, ""
     try:
         for raw in ADAPTERS[cfg["adapter"]].iter_offers(cfg, fetcher):
@@ -64,6 +66,8 @@ def scrape(store, dry_run=False, max_pages=None, time_budget=None, db=None, now=
                 break
     except BlockedError:
         blocked, note = True, "blocked by store"
+    except TimeBudgetExceeded:
+        complete, note = False, "time budget reached"
     except EmptyListingError:
         complete, note = False, "no products found"
     except Exception as e:                      # keep whatever was fetched; never crash the job silently

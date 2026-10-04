@@ -40,19 +40,24 @@ def test_product_without_variants_is_skipped():
     assert [o["url"] for o in iter_offers(CFG, f)] == [B + "/products/b"]
 
 
-def test_walks_collections_when_main_feed_hits_cap_and_never_repeats():
-    routes = {B + "/products.json?limit=250&page=1": feed(prod("a", [v("1")]), prod("b", [v("2")])),
-              B + "/collections.json?limit=250&page=1": json.dumps({"collections": [{"handle": "gpus"}, {"handle": "cpus"}]}),
-              B + "/collections/gpus/products.json?limit=250&page=1": feed(prod("a", [v("1")]), prod("c", [v("3")])),
-              B + "/collections/cpus/products.json?limit=250&page=1": feed(prod("d", [v("4")]))}
-    f = FakeFetcher(routes, default=json.dumps({"products": [], "collections": []}))
-    urls = [o["url"].rsplit("/", 1)[1] for o in iter_offers(dict(CFG, feed_cap=2), f)]
-    assert urls == ["a", "b", "c", "d"]
+COLLS = {B + "/collections.json?limit=250&page=1": json.dumps({"collections": [{"handle": "gpus"}, {"handle": "cpus"}]}),
+         B + "/collections/gpus/products.json?limit=250&page=1": feed(prod("a", [v("1")]), prod("c", [v("3")])),
+         B + "/collections/cpus/products.json?limit=250&page=1": feed(prod("d", [v("4")]))}
+NOTHING = json.dumps({"products": [], "collections": []})
 
 
-def test_no_collection_walk_below_cap():
-    f = FakeFetcher({B + "/products.json?limit=250&page=1": feed(prod("a", [v("1")]))}, default=feed())
-    list(iter_offers(CFG, f))
+def test_walks_collections_only_when_the_main_feed_is_cut_off():
+    # page 2 of the main feed errors out (HTTP error page instead of JSON) = the store truncated the feed
+    routes = dict(COLLS, **{B + "/products.json?limit=250&page=1": feed(prod("a", [v("1")]), prod("b", [v("2")])),
+                            B + "/products.json?limit=250&page=2": "<html>400 Bad Request</html>"})
+    urls = [o["url"].rsplit("/", 1)[1] for o in iter_offers(CFG, FakeFetcher(routes, default=NOTHING))]
+    assert urls == ["a", "b", "c", "d"]                       # remainder recovered, nothing repeated
+
+
+def test_no_collection_walk_when_the_feed_ends_cleanly():
+    routes = dict(COLLS, **{B + "/products.json?limit=250&page=1": feed(prod("a", [v("1")]))})
+    f = FakeFetcher(routes, default=NOTHING)
+    assert len(list(iter_offers(CFG, f))) == 1
     assert not any("collections" in c for c in f.calls)
 
 
