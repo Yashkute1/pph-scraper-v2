@@ -65,3 +65,16 @@ def test_ti_title_is_not_given_the_base_score_when_no_ti_row_exists():
 
 def test_suffix_words_far_from_the_number_are_ignored_in_titles():
     assert match("MSI GeForce RTX 5060 Gaming Trio 8GB with Super Alloy Power II", "Graphics Card", L)["model"] == "RTX 5060"
+
+
+def test_reads_the_live_collection_shape():
+    """The real `benchmarks` documents use type/benchmark, with no percentile."""
+    live = build_lookup([
+        {"type": "GPU", "brand": "Nvidia", "model": "RTX 5070", "rank": 12, "benchmark": 180.5, "samples": 900},
+        {"type": "GPU", "brand": "Nvidia", "model": "RTX 5060", "rank": 30, "benchmark": 120.5, "samples": 4000},
+        {"type": "GPU", "brand": "Nvidia", "model": "GTX 1650", "rank": 90, "benchmark": 40.5, "samples": 50000},
+    ])
+    b = match("ASUS Dual GeForce RTX 5060 8GB", "Graphics Card", live)
+    assert (b["score"], b["rank"], b["total"], b["bucket"], b["percentile"]) == (120.5, 30, 3, "GPU", 57)
+    assert match("Zotac GTX 1650 4GB", "Graphics Card", live)["percentile"] == 0
+    assert match("MSI RTX 5070 12GB", "Graphics Card", live)["percentile"] == 100

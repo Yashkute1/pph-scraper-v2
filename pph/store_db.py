@@ -100,8 +100,8 @@ def write_rollup(db, now):
     fields = {"store": 1, "url": 1, "title": 1, "price": 1, "mrp": 1, "in_stock": 1, "image": 1, "brand": 1,
               "category": 1, "group_id": 1, "specs": 1, "history": 1, "last_seen": 1}
     try:
-        benchmarks = build_lookup(db.benchmarks.find({}, {"_id": 0, "bucket": 1, "model": 1, "score": 1, "percentile": 1,
-                                                          "rank": 1, "samples": 1}))
+        benchmarks = build_lookup(db.benchmarks.find({}, {"_id": 0, "bucket": 1, "type": 1, "model": 1, "score": 1,
+                                                          "benchmark": 1, "percentile": 1, "rank": 1, "samples": 1}))
     except Exception:
         benchmarks = None             # scores are an extra; a roll-up without them is still a good roll-up
     rows = rollup(db.offers.find({}, fields), now, benchmarks)
