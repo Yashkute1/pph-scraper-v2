@@ -57,9 +57,21 @@ def keys_for(bucket, text, title=False):
     return {k for k in keys if len(k) >= 5}
 
 
+def _percentile(r, scores):
+    """Where the score sits between the slowest and fastest part of its kind, 0 to 100."""
+    if r.get("percentile") is not None:
+        return r["percentile"]
+    lo, hi = min(scores), max(scores)
+    return round((r["score"] - lo) / (hi - lo) * 100) if hi > lo else 100
+
+
 def build_lookup(docs):
     """{bucket: [(key, record)] longest key first}. With several rows per key the one with most samples wins."""
-    by_bucket, totals = {}, {}
+    by_bucket, totals, scores = {}, {}, {}
+    docs = [dict(d, bucket=d.get("bucket") or d.get("type"), score=d.get("score", d.get("benchmark"))) for d in docs]
+    for d in docs:
+        if d.get("bucket") and d.get("model") and isinstance(d.get("score"), (int, float)):
+            scores.setdefault(d["bucket"], []).append(d["score"])
     for d in docs:
         bucket, model, score = d.get("bucket"), d.get("model"), d.get("score")
         if not bucket:
@@ -74,7 +86,7 @@ def build_lookup(docs):
                 by_bucket[bucket][k] = d
     out = {}
     for bucket, keyed in by_bucket.items():
-        out[bucket] = [(k, {"score": r["score"], "percentile": r.get("percentile"), "rank": r.get("rank"),
+        out[bucket] = [(k, {"score": r["score"], "percentile": _percentile(r, scores[bucket]), "rank": r.get("rank"),
                             "total": totals[bucket], "model": r["model"], "bucket": bucket})
                        for k, r in sorted(keyed.items(), key=lambda kv: (-len(kv[0]), kv[0]))]
     return out
