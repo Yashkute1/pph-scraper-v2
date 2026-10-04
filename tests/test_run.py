@@ -107,3 +107,19 @@ def test_rollup_command(env):
     go([raw(1), raw(2)], db)
     code, out = R.rollup_cmd(db=db, now=NOW)
     assert code == 0 and out["products"] == 2 and json.loads((env / "rollup.json").read_text())["products"] == 2
+
+
+def test_budget_raised_inside_the_adapter_is_a_clean_partial(env):
+    from pph.fetch import TimeBudgetExceeded
+    db = mongomock.MongoClient().pph_site
+    go([raw(n) for n in range(10)], db)
+    code, run = go([raw(n) for n in range(9)], db, error=TimeBudgetExceeded())
+    assert (code, run["status"], run["note"], run["written"]) == (1, "partial", "time budget reached", 9)
+
+
+def test_scrape_sets_the_fetcher_deadline(env):
+    class F: deadline = None
+    f = F(); R.ADAPTERS["fake"] = adapter([raw(1)])
+    try: R.scrape("s", dry_run=True, now=NOW, fetcher=f, time_budget=600, clock=lambda: 50.0)
+    finally: R.ADAPTERS.pop("fake")
+    assert f.deadline == 650.0

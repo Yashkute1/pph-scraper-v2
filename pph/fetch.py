@@ -37,6 +37,10 @@ class BlockedError(Exception):
         self.url, self.status, self.fatal = url, status, fatal
 
 
+class TimeBudgetExceeded(Exception):
+    """The store's time allowance ran out; the run stops cleanly and keeps what it has."""
+
+
 class Page:
     def __init__(self, status, text, url):
         self.status, self.text, self.url = status, text or "", url
@@ -67,14 +71,18 @@ class Fetcher_:
     """One per store run. Counts consecutive blocked pages; the third is fatal."""
     MAX_BLOCKED = 3
 
-    def __init__(self, mode="http", delay=(1.0, 2.0), retries=3, transport=None, sleep=time.sleep):
+    def __init__(self, mode="http", delay=(1.0, 2.0), retries=3, transport=None, sleep=time.sleep, clock=time.monotonic):
         self.mode, self.delay, self.retries = mode, delay, retries
         self._transport = transport or _scrapling_transport
         self._sleep = sleep
+        self._clock = clock
+        self.deadline = None             # monotonic seconds; set by the runner
         self.consecutive_blocked = 0
         self.requests = 0
 
     def get(self, url):
+        if self.deadline is not None and self._clock() > self.deadline:
+            raise TimeBudgetExceeded()
         if self.requests:
             self._sleep(random.uniform(*self.delay))
         self.requests += 1

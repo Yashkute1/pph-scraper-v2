@@ -78,3 +78,13 @@ def test_page_json_and_css():
     assert p.json() == {"products": [1, 2]}
     h = Page(200, "<html><body><a class='x' href='/p/1'>One</a></body></html>", "https://s.test/c")
     assert h.css("a.x::attr(href)").get() == "/p/1" and h.css("a.x::text").get() == "One"
+
+
+def test_deadline_stops_further_requests():
+    from pph.fetch import TimeBudgetExceeded
+    now = [0.0]
+    f = Fetcher_("http", (0, 0), transport=lambda u, m: OK, sleep=lambda s: None, clock=lambda: now[0])
+    f.deadline = 100.0
+    assert f.get("u1").status == 200
+    now[0] = 101.0
+    with pytest.raises(TimeBudgetExceeded): f.get("u2")
