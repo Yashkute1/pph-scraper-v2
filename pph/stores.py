@@ -64,7 +64,7 @@ STORES = {
         "price": ("rupee", 0), "mrp": ("rupee", 1), "image": "img[alt]", "page_param": "page", "max_detail": 0,
     },
     "amazon": {
-        "adapter": "html_listing", "mode": "stealth", "base": "https://www.amazon.in", "delay": (3, 5), "max_pages": 7,
+        "adapter": "html_listing", "mode": "stealth", "base": "https://www.amazon.in", "delay": (3, 5), "max_pages": 12,
         "start_urls": ["https://www.amazon.in/s?k=" + quote_plus(t) for t in SEARCH_TERMS],
         "card": 'div[data-component-type="s-search-result"][data-asin]', "title": ["h2::alltext"],
         "link_attr": ("data-asin", "https://www.amazon.in/dp/{}"),

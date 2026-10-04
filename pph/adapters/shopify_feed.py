@@ -1,25 +1,7 @@
 """Shopify stores publish their catalogue at /products.json - no HTML parsing needed."""
-import json
-
-from .common import EmptyListingError
+from .common import EmptyListingError, json_page
 
 MAX_PAGES = 400
-
-
-def _feed(fetcher, url_tpl, key, state):
-    """Yield items page by page. Sets state['cut'] when the feed stops on an error rather than an empty page."""
-    for n in range(1, MAX_PAGES + 1):
-        page = fetcher.get(url_tpl % n)
-        try:
-            items = (json.loads(page.text) or {}).get(key) if page.status == 200 else None
-        except (ValueError, AttributeError):
-            items = None
-        if items is None:
-            state["cut"] = True
-            return
-        if not items:
-            return
-        yield from items
 
 
 def _offer(base, p):
@@ -36,24 +18,17 @@ def _offer(base, p):
 
 def iter_offers(cfg, fetcher):
     base = cfg["base"].rstrip("/")
-    seen, state, count = set(), {"cut": False}, 0
-
-    def emit(products):
+    seen = set()
+    for n in range(1, MAX_PAGES + 1):
+        url = f"{base}/products.json?limit=250&page={n}"
+        data = json_page(fetcher, url, first=(n == 1))
+        products = (data.get("products") if isinstance(data, dict) else None) or []
+        if not products:
+            break
         for p in products:
-            h = p.get("handle")
-            if h in seen:
-                continue
             o = _offer(base, p)
-            if o:
-                seen.add(h)
+            if o and p["handle"] not in seen:
+                seen.add(p["handle"])
                 yield o
-
-    for o in emit(_feed(fetcher, base + "/products.json?limit=250&page=%d", "products", state)):
-        count += 1
-        yield o
-    if count == 0:
+    if not seen:
         raise EmptyListingError(base + "/products.json")
-    if state["cut"]:
-        # the store stopped serving the main feed part-way: sweep the collections for the remainder
-        for c in list(_feed(fetcher, base + "/collections.json?limit=250&page=%d", "collections", {})):
-            yield from emit(_feed(fetcher, f"{base}/collections/{c['handle']}/products.json?limit=250&page=%d", "products", {}))

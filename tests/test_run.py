@@ -123,3 +123,11 @@ def test_scrape_sets_the_fetcher_deadline(env):
     try: R.scrape("s", dry_run=True, now=NOW, fetcher=f, time_budget=600, clock=lambda: 50.0)
     finally: R.ADAPTERS.pop("fake")
     assert f.deadline == 650.0
+
+
+def test_incomplete_feed_is_partial_and_keeps_fetched(env):
+    from pph.adapters.common import IncompleteError
+    db = mongomock.MongoClient().pph_site
+    go([raw(n) for n in range(10)], db)
+    code, run = go([raw(n) for n in range(9)], db, error=IncompleteError("u"))
+    assert (code, run["status"], run["note"], run["written"]) == (1, "partial", "store stopped responding part-way", 9)
