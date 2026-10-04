@@ -147,3 +147,24 @@ def test_rollup_keeps_last_products_when_there_are_no_offers(db):
     db.offers.delete_many({})
     out = write_rollup(db, day(1))
     assert out["products"] == 0 and out["skipped"] is True and db.products_v2.count_documents({}) == 1
+
+
+def test_write_rollup_attaches_benchmarks_and_site_fields(db):
+    ensure_indexes(db)
+    db.benchmarks.insert_one({"bucket": "SSD", "brand": "MSI", "model": "Part number 1", "score": 50.5, "percentile": 40, "rank": 7, "samples": 3})
+    write_store(db, "a", [o("a", 1, 900, gid="g1")], T0, False)
+    write_rollup(db, T0)
+    g1 = db.products_v2.find_one({"group_id": "g1"})
+    assert g1["benchmark"]["score"] == 50.5 and g1["category_slug"] == "ssd" and g1["brand_slug"] == "msi"
+    assert g1["offers"][0]["id"] == offer_id("a", "https://a.test/p/1") and g1["offers"][0]["checked"] == T0
+    assert (g1["drop_pct"], g1["spread_pct"]) == (0, 0)
+
+
+def test_indexes_for_the_site(db):
+    ensure_indexes(db)
+    keys = [tuple(i["key"]) for i in db.products_v2.index_information().values()]
+    for want in [(("category_slug", 1), ("any_stock", -1), ("store_count", -1), ("best_price", 1)),
+                 (("category_slug", 1), ("any_stock", -1), ("best_price", 1)),
+                 (("category_slug", 1), ("brand_slug", 1), ("any_stock", -1), ("store_count", -1)),
+                 (("any_stock", -1), ("drop_pct", -1)), (("any_stock", -1), ("spread_pct", -1))]:
+        assert want in keys, want

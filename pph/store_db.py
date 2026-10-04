@@ -4,6 +4,7 @@ from datetime import timedelta
 
 from pymongo import ReplaceOne, UpdateOne
 
+from .benchmarks import build_lookup
 from .group import rollup
 from .normalize import canonical_url
 
@@ -39,6 +40,11 @@ def ensure_indexes(db):
     p.create_index("brand")
     p.create_index([("any_stock", -1), ("store_count", -1)])
     p.create_index([("title", "text")])
+    p.create_index([("category_slug", 1), ("any_stock", -1), ("store_count", -1), ("best_price", 1)])      # site: popular
+    p.create_index([("category_slug", 1), ("any_stock", -1), ("best_price", 1)])                           # site: by price
+    p.create_index([("category_slug", 1), ("brand_slug", 1), ("any_stock", -1), ("store_count", -1)])      # site: brand filter
+    p.create_index([("any_stock", -1), ("drop_pct", -1)])                                                  # site: deals
+    p.create_index([("any_stock", -1), ("spread_pct", -1)])
     db.scrape_runs.create_index([("store", 1), ("started", -1)])
 
 
@@ -92,8 +98,13 @@ def write_store(db, store, offers, now, blocked, started=None, note="", complete
 def write_rollup(db, now):
     """Rebuild products_v2 from current offers. Keeps the previous rows if there are no offers at all."""
     fields = {"store": 1, "url": 1, "title": 1, "price": 1, "mrp": 1, "in_stock": 1, "image": 1, "brand": 1,
-              "category": 1, "group_id": 1, "specs": 1, "history": 1}
-    rows = rollup(db.offers.find({}, fields), now)
+              "category": 1, "group_id": 1, "specs": 1, "history": 1, "last_seen": 1}
+    try:
+        benchmarks = build_lookup(db.benchmarks.find({}, {"_id": 0, "bucket": 1, "model": 1, "score": 1, "percentile": 1,
+                                                          "rank": 1, "samples": 1}))
+    except Exception:
+        benchmarks = None             # scores are an extra; a roll-up without them is still a good roll-up
+    rows = rollup(db.offers.find({}, fields), now, benchmarks)
     out = {"products": len(rows), "skipped": False, "bytes": None, "trimmed": False}
     if not rows:
         out["skipped"] = True
