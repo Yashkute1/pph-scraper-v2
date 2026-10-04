@@ -10,7 +10,7 @@ catalogue are gone; 71% of the database (Amazon, Flipkart) has not been updated
 since 10 Aug 2026.
 
 Success means:
-- All nine stores are refreshed daily from GitHub-hosted runners.
+- All nine stores are refreshed every 6 hours from GitHub-hosted runners.
 - A bad run can never wipe or falsely mark a store out of stock.
 - The site can read one ready-made row per part, with a real "last updated" time.
 - The repo is public and contains no credentials, in code or in history.
@@ -117,9 +117,11 @@ reported; history is trimmed first if space runs short.
 
 ### Run safety
 
-- Sanity gate: a store's results are written only if the run was not blocked
-  and returned at least 60% of that store's previous count. Otherwise nothing
-  for that store changes and the run is recorded as `partial` or `blocked`.
+- Sanity gate: a run is trusted only if it finished, was not blocked, and
+  returned at least 60% of that store's live offers. An untrusted run still
+  refreshes the offers it did fetch (they are real prices) but changes nothing
+  else: no offer is aged, marked out of stock or deleted. It is recorded as
+  `partial` or `blocked`. A run that fetched nothing writes nothing.
 - `missed_runs` increases only after a run that passed the gate. At 3 the offer
   is marked out of stock; after 14 days unseen it is deleted.
 - Roll-up runs after all store jobs, whatever their result, from current
@@ -127,7 +129,7 @@ reported; history is trimmed first if space runs short.
 
 ### Schedule (GitHub Actions)
 
-- `scrape.yml`: daily 22:00 UTC (03:30 IST) and manual. A matrix job per store,
+- `scrape.yml`: every 6 hours and manual. A matrix job per store,
   running in parallel, each with its own timeout; then one `rollup` job.
 - `ci.yml`: tests on every push and pull request.
 

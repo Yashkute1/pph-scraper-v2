@@ -36,15 +36,30 @@ def test_first_run_writes_and_records_run(db):
     assert (doc["first_seen"], doc["last_seen"], doc["missed_runs"], doc["history"]) == (T0, T0, 0, [{"d": "2026-10-04", "p": 1000}])
 
 
-def test_failed_gate_changes_nothing(db):
+def test_untrusted_run_refreshes_what_it_saw_and_touches_nothing_else(db):
     write_store(db, "a", [o("a", n) for n in range(10)], T0, blocked=False)
-    before = list(db.offers.find().sort("_id"))
-    run = write_store(db, "a", [o("a", 1, price=5)], day(1), blocked=False)          # 1 of 10 = partial
-    assert (run["status"], run["written"]) == ("partial", 0)
-    run = write_store(db, "a", [o("a", n, price=5) for n in range(10)], day(1), blocked=True)
-    assert run["status"] == "blocked"
-    assert list(db.offers.find().sort("_id")) == before
+    run = write_store(db, "a", [o("a", 1, price=950)], day(1), blocked=False)          # 1 of 10 = partial
+    assert (run["status"], run["written"]) == ("partial", 1)
+    run = write_store(db, "a", [o("a", 2, price=940)], day(2), blocked=True)
+    assert (run["status"], run["written"]) == ("blocked", 1)
+    docs = {d["url"][-1]: d for d in db.offers.find()}
+    assert (docs["1"]["price"], docs["1"]["last_seen"], docs["2"]["price"]) == (950, day(1), 940)
+    others = [d for k, d in docs.items() if k not in "12"]
+    assert len(others) == 8 and all((d["missed_runs"], d["in_stock"], d["last_seen"], d["price"]) == (0, True, T0, 1000) for d in others)
     assert db.scrape_runs.count_documents({}) == 3
+
+
+def test_empty_run_writes_nothing(db):
+    write_store(db, "a", [o("a", n) for n in range(3)], T0, blocked=False)
+    before = list(db.offers.find().sort("_id"))
+    run = write_store(db, "a", [], day(1), blocked=False)
+    assert (run["status"], run["written"]) == ("failed", 0) and list(db.offers.find().sort("_id")) == before
+
+
+def test_incomplete_run_is_never_trusted_as_full(db):
+    write_store(db, "a", [o("a", n) for n in range(10)], T0, blocked=False)
+    run = write_store(db, "a", [o("a", n) for n in range(9)], day(1), blocked=False, complete=False)
+    assert run["status"] == "partial" and db.offers.find_one({"url": "https://a.test/p/9"})["missed_runs"] == 0
 
 
 def test_upsert_keeps_first_seen_and_one_history_point_per_day(db):
