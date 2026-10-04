@@ -5,7 +5,7 @@ import pytest
 
 from pph.store_db import gate, write_store, write_rollup, ensure_indexes, offer_id
 
-T0 = datetime(2026, 10, 4, 3, 0, tzinfo=timezone.utc)
+T0 = datetime(2026, 10, 4, 3, 0)          # naive UTC, as MongoDB returns it
 
 
 def day(n): return T0 + timedelta(days=n)
@@ -83,11 +83,12 @@ def test_seen_again_resets_missed_runs(db):
 
 
 def test_unseen_for_14_days_is_deleted(db):
-    write_store(db, "a", [o("a", 1), o("a", 2)], T0, False)
-    write_store(db, "a", [o("a", 1)], day(13), False)
-    assert db.offers.count_documents({}) == 2
-    write_store(db, "a", [o("a", 1)], day(15), False)
-    assert [d["url"] for d in db.offers.find()] == ["https://a.test/p/1"]
+    keep = [o("a", n) for n in range(4)]
+    write_store(db, "a", keep + [o("a", 9)], T0, False)
+    write_store(db, "a", keep, day(13), False)
+    assert db.offers.count_documents({}) == 5
+    write_store(db, "a", keep, day(15), False)
+    assert db.offers.count_documents({}) == 4 and db.offers.find_one({"url": "https://a.test/p/9"}) is None
 
 
 def test_other_stores_untouched(db):
