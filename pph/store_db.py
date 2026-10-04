@@ -53,8 +53,12 @@ def _history(old, day, price):
     return h[-HISTORY_DAYS:]
 
 
-def write_store(db, store, offers, now, blocked, started=None, note=""):
-    """Apply one store's run behind the sanity gate and record it. Returns the scrape_runs document."""
+def write_store(db, store, offers, now, blocked, started=None, note="", complete=True):
+    """Apply one store's run behind the sanity gate and record it. Returns the scrape_runs document.
+
+    Trusted run (complete, not blocked, >= 60% of live offers): prices refreshed and unseen offers aged.
+    Untrusted run: the offers it did fetch are refreshed (they are real prices) but nothing else is touched,
+    so a blocked or truncated run can never mark products out of stock or delete them."""
     unique = {}
     for o in offers:
         oid = offer_id(store, o["url"])
@@ -62,10 +66,12 @@ def write_store(db, store, offers, now, blocked, started=None, note=""):
             unique[oid] = o
     previous = db.offers.count_documents({"store": store, "missed_runs": {"$lt": MISSED_LIMIT}})
     ok, status = gate(len(unique), previous, blocked)
+    if ok and not complete:
+        ok, status = False, "partial"
     run = {"store": store, "started": started or now, "finished": now, "status": status, "fetched": len(unique),
            "written": 0, "previous_count": previous, "note": note}
-    if ok:
-        existing = {d["_id"]: d for d in db.offers.find({"store": store}, {"history": 1})}
+    if unique and status != "failed":
+        existing = {d["_id"]: d for d in db.offers.find({"store": store, "_id": {"$in": list(unique)}}, {"history": 1})}
         day = now.strftime("%Y-%m-%d")
         ops = []
         for oid, o in unique.items():
@@ -73,11 +79,12 @@ def write_store(db, store, offers, now, blocked, started=None, note=""):
                        history=_history(existing.get(oid, {}).get("history"), day, o["price"]))
             ops.append(UpdateOne({"_id": oid}, {"$set": doc, "$setOnInsert": {"first_seen": now}}, upsert=True))
         _bulk(db.offers, ops)
+        run["written"] = len(ops)
+    if ok:
         unseen = {"store": store, "_id": {"$nin": list(unique)}}
         db.offers.update_many(unseen, {"$inc": {"missed_runs": 1}})
         db.offers.update_many(dict(unseen, missed_runs={"$gte": MISSED_LIMIT}), {"$set": {"in_stock": False}})
         db.offers.delete_many(dict(unseen, last_seen={"$lt": now - DELETE_AFTER}))
-        run["written"] = len(ops)
     db.scrape_runs.insert_one(dict(run))
     return run
 
