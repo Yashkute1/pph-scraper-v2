@@ -130,3 +130,8 @@ def test_benchmark_attached_when_lookup_given():
     row, = rollup([offer("a", 100)], NOW, look)
     assert row["benchmark"] == {"score": 88.4, "percentile": 71, "rank": 60, "total": 1, "model": "Ryzen 5 5600", "bucket": "CPU"}
     assert rollup([offer("a", 100)], NOW)[0]["benchmark"] is None
+
+
+def test_facets_on_the_row():
+    row, = rollup([offer("a", 100)], NOW)
+    assert row["facets"] == {"series": "Ryzen 5", "socket": "AM4"}

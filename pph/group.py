@@ -5,6 +5,7 @@ from datetime import timedelta
 from statistics import median
 
 from .benchmarks import match as match_benchmark
+from .facets import facets_of
 
 MAX_DISCOUNT = 0.85      # a bigger "discount" is almost always a mismatched or fake MRP
 DROP_MIN_DAYS = 7        # no "price dropped" claim until a week of history exists
@@ -68,6 +69,7 @@ def _row(gid, members, now, benchmarks=None):
         "category_slug": slug(best.get("category")), "brand_slug": slug(best.get("brand")),
         "drop_pct": _drop_pct(members, best, now), "spread_pct": _spread_pct(offers),
         "benchmark": match_benchmark(best["title"], best.get("category"), benchmarks),
+        "facets": facets_of(best["title"], best.get("category"), best.get("specs")),
     }
 
 
