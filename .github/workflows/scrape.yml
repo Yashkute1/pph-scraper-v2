@@ -10,18 +10,19 @@ on:
         type: boolean
         default: true
   push:
-    branches: ['dryrun/**']          # pushing a dryrun/* branch runs a no-write test
+    branches: ['dryrun/**', 'live/**']   # dryrun/* = no-write test; live/* = an immediate real run
 
 permissions:
   contents: read
 
 concurrency:
-  group: scrape-${{ github.ref }}
+  # every writing run shares one queue, so two can never update the database at once
+  group: scrape-${{ (startsWith(github.ref, 'refs/heads/dryrun/') || inputs.dry_run == true) && github.ref || 'live' }}
   cancel-in-progress: false          # never kill a run that is half-way through writing
 
 env:
-  DRY_RUN: ${{ (github.event_name == 'push' || inputs.dry_run == true) && '--dry-run' || '' }}
-  QUICK: ${{ github.event_name == 'push' && '--max-pages 2' || '' }}   # branch tests only sample two pages per category
+  DRY_RUN: ${{ (startsWith(github.ref, 'refs/heads/dryrun/') || inputs.dry_run == true) && '--dry-run' || '' }}
+  QUICK: ${{ startsWith(github.ref, 'refs/heads/dryrun/') && '--max-pages 2' || '' }}   # branch tests only sample two pages per category
 
 jobs:
   scrape:
@@ -59,7 +60,7 @@ jobs:
 
   rollup:
     needs: scrape
-    if: ${{ always() && github.event_name != 'push' && inputs.dry_run != true }}
+    if: ${{ always() && !startsWith(github.ref, 'refs/heads/dryrun/') && inputs.dry_run != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
