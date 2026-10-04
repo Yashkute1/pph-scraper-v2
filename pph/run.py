@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from . import DB_NAME
 from .adapters import ADAPTERS
-from .adapters.common import EmptyListingError
+from .adapters.common import EmptyListingError, IncompleteError
 from .fetch import BlockedError, Fetcher_, TimeBudgetExceeded
 from .normalize import normalize
 from .stores import STORES
@@ -70,6 +70,8 @@ def scrape(store, dry_run=False, max_pages=None, time_budget=None, db=None, now=
         complete, note = False, "time budget reached"
     except EmptyListingError:
         complete, note = False, "no products found"
+    except IncompleteError:
+        complete, note = False, "store stopped responding part-way"
     except Exception as e:                      # keep whatever was fetched; never crash the job silently
         complete, note = False, safe_error(e)
     seconds = int(clock() - t0)

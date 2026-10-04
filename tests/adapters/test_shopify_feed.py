@@ -40,25 +40,35 @@ def test_product_without_variants_is_skipped():
     assert [o["url"] for o in iter_offers(CFG, f)] == [B + "/products/b"]
 
 
-COLLS = {B + "/collections.json?limit=250&page=1": json.dumps({"collections": [{"handle": "gpus"}, {"handle": "cpus"}]}),
-         B + "/collections/gpus/products.json?limit=250&page=1": feed(prod("a", [v("1")]), prod("c", [v("3")])),
-         B + "/collections/cpus/products.json?limit=250&page=1": feed(prod("d", [v("4")]))}
-NOTHING = json.dumps({"products": [], "collections": []})
+class Scripted(FakeFetcher):
+    """routes values may be a list: one body per successive call to that URL."""
+    def get(self, url):
+        body = self.routes.get(url, self.default)
+        if isinstance(body, list):
+            self.calls.append(url)
+            from pph.fetch import Page
+            b = body.pop(0) if len(body) > 1 else body[0]
+            return Page(200, b, url)
+        return super().get(url)
 
 
-def test_walks_collections_only_when_the_main_feed_is_cut_off():
-    # page 2 of the main feed errors out (HTTP error page instead of JSON) = the store truncated the feed
-    routes = dict(COLLS, **{B + "/products.json?limit=250&page=1": feed(prod("a", [v("1")]), prod("b", [v("2")])),
-                            B + "/products.json?limit=250&page=2": "<html>400 Bad Request</html>"})
-    urls = [o["url"].rsplit("/", 1)[1] for o in iter_offers(CFG, FakeFetcher(routes, default=NOTHING))]
-    assert urls == ["a", "b", "c", "d"]                       # remainder recovered, nothing repeated
+def test_a_page_that_fails_once_is_retried_and_the_feed_continues():
+    f = Scripted({B + "/products.json?limit=250&page=1": feed(prod("a", [v("1")])),
+                  B + "/products.json?limit=250&page=2": ["<html>502 Bad Gateway</html>", feed(prod("b", [v("2")]))]}, default=feed())
+    assert [o["url"][-1] for o in iter_offers(CFG, f)] == ["a", "b"]
+    assert f.calls.count(B + "/products.json?limit=250&page=2") == 2
 
 
-def test_no_collection_walk_when_the_feed_ends_cleanly():
-    routes = dict(COLLS, **{B + "/products.json?limit=250&page=1": feed(prod("a", [v("1")]))})
-    f = FakeFetcher(routes, default=NOTHING)
-    assert len(list(iter_offers(CFG, f))) == 1
-    assert not any("collections" in c for c in f.calls)
+def test_a_page_that_keeps_failing_ends_the_run_as_incomplete_without_other_requests():
+    import pytest
+    from pph.adapters.common import IncompleteError
+    f = Scripted({B + "/products.json?limit=250&page=1": feed(prod("a", [v("1")])),
+                  B + "/products.json?limit=250&page=2": ["<html>502</html>"]}, default=feed())
+    got = []
+    with pytest.raises(IncompleteError):
+        for o in iter_offers(CFG, f): got.append(o)
+    assert len(got) == 1                                   # what was fetched is still handed over
+    assert f.calls.count(B + "/products.json?limit=250&page=2") == 3 and not any("collections" in c for c in f.calls)
 
 
 def test_empty_or_missing_feed_raises():
