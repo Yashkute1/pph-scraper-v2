@@ -3,13 +3,18 @@
 Runs in GitHub Actions in three steps, so the database password is never in the same process as code that
 downloads from store servers:
 
-    python -m tools.cutouts list  todo.txt --shard 0/6 --limit 1500      # needs MONGO_URI; writes "key url" lines
+    python -m tools.cutouts list  todo.txt --shard 0/16 --limit 500      # needs MONGO_URI; writes "key url" lines
     python -m tools.cutouts make  todo.txt out/                          # no secrets; downloads, cuts, writes WebP
     python -m tools.cutouts merge branch_dir/ out1/ out2/ ...            # no secrets; copies files, updates manifest
 
-Model: IS-Net "general use" through the rembg library (both open source). About 2 seconds per photo on a free runner.
-A photo whose result looks wrong (nothing removed, or almost everything removed) is recorded as "skip"; the website
-then shows the store photo on a white tile, as before."""
+How a photo is cut. Most store photos sit on a plain background, and for those the background colour is known
+exactly, so it is removed by arithmetic rather than by guessing: a pixel is as see-through as it is close to that
+colour, and the colour that bled into edge pixels is taken back out. A segmentation model (BiRefNet "general lite",
+MIT licence, run through the rembg library) is only asked the one thing arithmetic cannot know: whether a
+background-coloured area is part of the product (a white label, a white headset) or not (the gap inside a handle).
+It can therefore no longer eat dark parts of a product or leave a white fringe, which is what the first version did.
+A photo without a plain background is cut by the model alone, and only when the model is sure; otherwise it is
+recorded as "skip" and the website shows the whole photo on a tile."""
 import hashlib
 import io
 import ipaddress
@@ -18,7 +23,9 @@ import shutil
 import sys
 from urllib.parse import urlsplit
 
-MAX_SIDE = 512
+MAX_SIDE = 640
+WORK_SIDE = 1024                           # photos are cut at this size, then reduced
+MODEL = "birefnet-general-lite"
 MAX_BYTES = 8 * 1024 * 1024
 MIN_KEEP, MAX_KEEP = 0.02, 0.97            # share of pixels kept; outside this the cut is not trusted
 
@@ -78,6 +85,110 @@ def todo(urls, done, shard, shards, limit):
     return out
 
 
+def background(rgb):
+    """(colour, plain?) read from the outer ring of the picture. `rgb` is an HxWx3 uint8 array.
+
+    Plain means most of the ring is one colour and little of it is a gradient. A product that touches the edge is
+    fine: its pixels are far from the background colour, not slightly off it."""
+    import numpy as np
+    h, w, _ = rgb.shape
+    r = max(2, round(min(h, w) * 0.015))
+    ring = np.concatenate([rgb[:r].reshape(-1, 3), rgb[-r:].reshape(-1, 3), rgb[:, :r].reshape(-1, 3), rgb[:, -r:].reshape(-1, 3)]).astype(np.int32)
+    q = ring // 8
+    codes = q[:, 0] * 1024 + q[:, 1] * 32 + q[:, 2]
+    col = np.median(ring[codes == np.bincount(codes).argmax()], axis=0)
+    d = np.abs(ring - col).max(axis=1)
+    near, mid = float((d <= 10).mean()), float(((d > 10) & (d <= 45)).mean())
+    return col, (near >= 0.6 and mid <= 0.10) or (near >= 0.35 and mid <= 0.03)
+
+
+def _erode(mask, k):
+    import numpy as np
+    from PIL import Image, ImageFilter
+    return np.asarray(Image.fromarray((mask * 255).astype("uint8")).filter(ImageFilter.MinFilter(k))) > 0
+
+
+def _dilate(mask, k):
+    import numpy as np
+    from PIL import Image, ImageFilter
+    return np.asarray(Image.fromarray((mask * 255).astype("uint8")).filter(ImageFilter.MaxFilter(k))) > 0
+
+
+def _blur(channel, radius):
+    import numpy as np
+    from PIL import Image, ImageFilter
+    return np.asarray(Image.fromarray(channel.astype("uint8")).filter(ImageFilter.BoxBlur(radius)), dtype=np.float32)
+
+
+def exact_cut(rgb, model, col):
+    """Cut a photo whose background colour `col` is known. `model` is the model's mask, HxW floats from 0 to 1.
+
+    1. Every pixel is at least as solid as its distance from the background colour demands, so dark and coloured
+       parts stay whatever the model says. Faint differences (a soft shadow) stay faint and come out dark.
+    2. The model can only add to that. A background-coloured pixel is kept only well inside what the model calls
+       product, which drops the thin light fringe models leave around edges.
+    3. Pixels on the outline are a blend of product and background. They are un-blended against the product colour
+       just inside them, so the outline is smooth and carries none of the background colour."""
+    import numpy as np
+    f = rgb.astype(np.float32)
+    diff = f - col
+    dist = np.abs(diff).max(axis=2)
+    k = max(5, round(max(dist.shape) * 0.006)) | 1
+    core = _erode(model > 0.5, k)
+    m = np.where((dist < 18) & ~core, 0.0, model)
+    floor = np.maximum(dist / 255.0, np.clip((dist - 60) / 90.0, 0, 1))
+    floor = np.where(dist < 5, 0.0, floor)                           # compression noise in the background
+    alpha = np.maximum(floor, m)
+
+    gone = alpha < 0.05
+    band = _dilate(gone, 5) & ~gone                                  # the two pixels next to removed background
+    solid = (alpha > 0.95) & ~_dilate(gone, 7)
+    weight = _blur(solid * 255.0, 4) / 255.0
+    inside = np.dstack([_blur(f[..., c] * solid, 4) for c in range(3)]) / np.maximum(weight, 1e-3)[..., None]
+    span = inside - col
+    power = (span * span).sum(axis=2)
+    ok = band & (weight > 0.04) & (np.abs(span).max(axis=2) > 40)
+    unmixed = np.clip((diff * span).sum(axis=2) / np.maximum(power, 1.0), 0, 1)
+    alpha = np.where(ok, unmixed, alpha)
+
+    a = np.clip(alpha, 1e-3, 1)[..., None]
+    fg = np.where(alpha[..., None] >= 0.999, f, np.clip(col + diff / a, 0, 255))      # take the background back out
+    return np.dstack([fg, alpha * 255]).round().astype(np.uint8)
+
+
+def model_cut(rgb, model):
+    """For a photo with no plain background: the model's mask as it is, or None when the model is not sure."""
+    import numpy as np
+    kept = float((model > 0.5).mean())
+    unsure = float(((model > 0.15) & (model < 0.85)).mean())
+    if kept <= 0 or unsure > 0.25 * kept:
+        return None
+    return np.dstack([rgb, (model * 255).round()]).astype(np.uint8)
+
+
+def cut_photo(im, mask_of):
+    """PIL image in, RGBA PIL image out, or None when no trustworthy cut exists. `mask_of(rgb_image)` returns an L image."""
+    import numpy as np
+    from PIL import Image
+    if im.mode in ("RGBA", "LA", "P"):
+        rgba = im.convert("RGBA")
+        if rgba.getchannel("A").getextrema()[0] < 16 and usable(rgba):
+            return rgba                                              # the store already removed the background
+        flat = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+        flat.alpha_composite(rgba)
+        im = flat
+    im = im.convert("RGB")
+    im.thumbnail((WORK_SIDE, WORK_SIDE), Image.LANCZOS)
+    rgb = np.asarray(im)
+    model = np.asarray(mask_of(im).convert("L").resize(im.size), dtype=np.float32) / 255.0
+    col, plain = background(rgb)
+    out = exact_cut(rgb, model, col) if plain else model_cut(rgb, model)
+    if out is None:
+        return None
+    rgba = Image.fromarray(out, "RGBA")
+    return rgba if usable(rgba) else None
+
+
 def usable(rgba):
     alpha = rgba.getchannel("A")
     kept = sum(alpha.histogram()[128:]) / float(alpha.width * alpha.height)
@@ -90,13 +201,13 @@ def finish(rgba, max_side=MAX_SIDE):
     if box:
         pad = max(2, round(max(box[2] - box[0], box[3] - box[1]) * 0.02))
         rgba = rgba.crop((box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad))
-    rgba.thumbnail((max_side, max_side))
+    rgba.thumbnail((max_side, max_side), 1)                          # 1 = Lanczos
     return rgba
 
 
 def encode(rgba):
     buf = io.BytesIO()
-    rgba.save(buf, "WEBP", quality=80, method=6)
+    rgba.save(buf, "WEBP", quality=76, method=6, alpha_quality=90)
     return buf.getvalue()
 
 
@@ -146,11 +257,21 @@ def cmd_list(path, shard, shards, limit):
     print({"todo": len(rows), "already_done": len(done)})
 
 
+def _session():
+    import onnxruntime as ort
+    from rembg import new_session
+    opts = ort.SessionOptions()
+    opts.enable_cpu_mem_arena = False                                # the model's working memory is returned after each photo
+    opts.enable_mem_pattern = False
+    return new_session(MODEL, sess_opts=opts)
+
+
 def cmd_make(path, out):
     from PIL import Image
-    from rembg import new_session, remove
+    from rembg import remove
     Image.MAX_IMAGE_PIXELS = 40_000_000
-    session = new_session("isnet-general-use")
+    session = _session()
+    mask_of = lambda rgb: remove(rgb, session=session, only_mask=True, post_process_mask=False)
     os.makedirs(out, exist_ok=True)
     results = {}
     for line in open(path, encoding="utf-8"):
@@ -163,13 +284,8 @@ def cmd_make(path, out):
             if data:
                 im = Image.open(io.BytesIO(data))
                 im.load()
-                has_alpha = im.mode in ("RGBA", "LA") and im.convert("RGBA").getchannel("A").getextrema()[0] < 16
-                rgba = im.convert("RGBA")
-                if not (has_alpha and usable(rgba)):                 # a store photo that is already cut out is kept as it is
-                    rgb = im.convert("RGB")
-                    rgb.thumbnail((1024, 1024))
-                    rgba = remove(rgb, session=session, post_process_mask=True)
-                if usable(rgba):
+                rgba = cut_photo(im, mask_of)
+                if rgba is not None:
                     os.makedirs(os.path.join(out, key[:2]), exist_ok=True)
                     with open(os.path.join(out, key[:2], key + ".webp"), "wb") as f:
                         f.write(encode(finish(rgba)))

@@ -3,7 +3,10 @@ import io
 import pytest
 from PIL import Image, ImageDraw
 
-from tools.cutouts import (cutout_key, encode, finish, in_shard, merge_manifest, parse_manifest, safe_url, todo, usable)
+import numpy as np
+
+from tools.cutouts import (background, cut_photo, cutout_key, encode, exact_cut, finish, in_shard, merge_manifest, model_cut, parse_manifest,
+                           safe_url, todo, usable)
 
 
 def test_key_is_stable_and_path_safe():
@@ -68,3 +71,96 @@ def test_encode_is_webp_with_alpha():
     data = encode(finish(blob((100, 100, 300, 300)), 640))
     im = Image.open(io.BytesIO(data))
     assert im.format == "WEBP" and im.mode == "RGBA" and len(data) < 20000
+
+
+# ---- the cut itself ------------------------------------------------------------------------------------------------
+
+WHITE = np.array([255.0, 255.0, 255.0])
+
+
+def scene(size=200):
+    """White studio background with a black product in the middle. Returns (rgb array, product box)."""
+    rgb = np.full((size, size, 3), 255, np.uint8)
+    rgb[60:140, 50:150] = 20
+    return rgb, (slice(60, 140), slice(50, 150))
+
+
+def mask(size=200, box=None, value=1.0):
+    m = np.zeros((size, size), np.float32)
+    if box:
+        m[box] = value
+    return m
+
+
+def test_plain_background_is_detected_even_when_the_product_touches_an_edge():
+    rgb, _ = scene()
+    col, plain = background(rgb)
+    assert plain and col.tolist() == [255, 255, 255]
+    rgb[0:200, 80:120] = 20                                           # a cable running out of the top and bottom
+    assert background(rgb)[1]
+    grad = np.tile(np.linspace(120, 255, 200, dtype=np.uint8)[None, :, None], (200, 1, 3))
+    assert not background(grad)[1]                                    # a studio gradient is not a known colour
+
+
+def test_a_dark_part_the_model_missed_is_kept():
+    rgb, box = scene()
+    wrong = mask(box=(slice(60, 140), slice(50, 100)))               # the model only saw the left half
+    out = exact_cut(rgb, wrong, WHITE)
+    assert out[100, 125, 3] == 255 and out[100, 75, 3] == 255        # both halves stay solid
+    assert out[10, 10, 3] == 0 and out[100, 170, 3] == 0             # background is gone
+
+
+def test_a_light_fringe_the_model_added_is_removed():
+    rgb, _ = scene()
+    halo = mask(box=(slice(58, 142), slice(48, 152)))                # the model's mask is 2 px too generous all round
+    out = exact_cut(rgb, halo, WHITE)
+    assert out[58, 100, 3] == 0 and out[100, 48, 3] == 0             # the white rim is not kept
+    assert out[64, 100, 3] == 255
+
+
+def test_white_areas_are_decided_by_the_model():
+    rgb, _ = scene()
+    rgb[80:120, 70:130] = 255                                        # a white label on the black product
+    label_is_product = exact_cut(rgb, mask(box=(slice(60, 140), slice(50, 150))), WHITE)
+    assert label_is_product[100, 100, 3] == 255
+    hole = mask(box=(slice(60, 140), slice(50, 150)))
+    hole[80:120, 70:130] = 0                                         # same picture, but the model says it is a gap
+    assert exact_cut(rgb, hole, WHITE)[100, 100, 3] == 0
+
+
+def test_a_shadow_becomes_see_through_and_dark():
+    rgb, _ = scene()
+    rgb[145:155, 60:140] = 225                                       # soft grey shadow on the white floor
+    px = exact_cut(rgb, mask(box=(slice(60, 140), slice(50, 150))), WHITE)[150, 100]
+    assert 15 < px[3] < 90 and px[:3].max() < 60                     # mostly transparent and dark, not a pale grey patch
+
+
+def test_edge_pixels_lose_the_background_colour():
+    rgb, _ = scene()
+    rgb[59, 50:150] = 137                                            # the anti-aliased row a camera or resize produces
+    px = exact_cut(rgb, mask(box=(slice(60, 140), slice(50, 150))), WHITE)[59, 100]
+    assert 100 < px[3] < 160 and px[:3].max() < 60                   # half solid and dark: a smooth outline with no pale fringe
+
+
+def test_without_a_plain_background_only_a_confident_mask_is_used():
+    rng = np.random.default_rng(1)
+    rgb = rng.integers(0, 255, (200, 200, 3), dtype=np.uint8)
+    sure = mask(box=(slice(60, 140), slice(50, 150)))
+    out = model_cut(rgb, sure)
+    assert out is not None and out[100, 100, 3] == 255 and out[10, 10, 3] == 0
+    assert model_cut(rgb, mask(box=(slice(60, 140), slice(50, 150)), value=0.5)) is None     # the model cannot tell
+    assert model_cut(rgb, mask()) is None
+
+
+def test_cut_photo_end_to_end():
+    rgb, box = scene()
+    im = Image.fromarray(rgb)
+    out = cut_photo(im, lambda _: Image.fromarray((mask(box=box) * 255).astype("uint8")))
+    assert out.mode == "RGBA" and out.getpixel((100, 100))[3] == 255 and out.getpixel((5, 5))[3] == 0
+    ready = Image.new("RGBA", (200, 200), (0, 0, 0, 0))
+    ImageDraw.Draw(ready).rectangle((50, 60, 150, 140), fill=(20, 20, 20, 255))
+    called = []
+    same = cut_photo(ready, lambda _: called.append(1))
+    assert same.getpixel((100, 100))[3] == 255 and not called        # a photo that already has no background is left alone
+    noise = Image.fromarray(np.random.default_rng(2).integers(0, 255, (200, 200, 3), dtype=np.uint8))
+    assert cut_photo(noise, lambda _: Image.new("L", (200, 200), 128)) is None
