@@ -124,8 +124,8 @@ def test_white_areas_are_decided_by_the_model():
     label_is_product = exact_cut(rgb, mask(box=(slice(60, 140), slice(50, 150))), WHITE)
     assert label_is_product[100, 100, 3] == 255
     hole = mask(box=(slice(60, 140), slice(50, 150)))
-    hole[80:120, 70:130] = 0                                         # same picture, but the model says it is a gap
-    assert exact_cut(rgb, hole, WHITE)[100, 100, 3] == 0
+    hole[80:120, 70:130] = 0                                         # the model missed it: a four-sided white panel walled
+    assert exact_cut(rgb, hole, WHITE)[100, 100, 3] == 255           # in by the product is a label or a screen
 
 
 def test_a_shadow_becomes_see_through_and_dark():
@@ -143,11 +143,13 @@ def test_edge_pixels_lose_the_background_colour():
 
 
 def test_without_a_plain_background_only_a_confident_mask_is_used():
-    rng = np.random.default_rng(1)
-    rgb = rng.integers(0, 255, (200, 200, 3), dtype=np.uint8)
+    rgb = np.dstack([np.tile(np.linspace(90, 200, 200), (200, 1)).T] * 3).astype(np.uint8)      # a studio gradient
+    rgb[60:140, 50:150] = 20
     sure = mask(box=(slice(60, 140), slice(50, 150)))
     out = model_cut(rgb, sure, WHITE)
     assert out is not None and out[100, 100, 3] == 255 and out[10, 10, 3] == 0
+    busy = np.random.default_rng(1).integers(0, 255, (200, 200, 3), dtype=np.uint8)              # a desk, a room, cover art
+    assert model_cut(busy, sure, WHITE) is None
     assert model_cut(rgb, mask(box=(slice(60, 140), slice(50, 150)), value=0.5), WHITE) is None     # the model cannot tell
     assert model_cut(rgb, mask(), WHITE) is None
 
@@ -209,3 +211,67 @@ def test_lettering_and_margin_badges_are_dropped_even_when_large():
     out = exact_cut(rgb, model, WHITE)
     assert out[120, 95, 3] == 0 and out[35, 60, 3] == 0              # slogan and badge go
     assert out[230, 200, 3] == 255 and out[230, 365, 3] == 255       # keyboard and mouse stay
+
+
+def test_a_white_part_the_model_took_for_background_is_made_solid_again():
+    # a white memory stick on white: a coloured bar on top, a dark board below, a logo on the white body between
+    rgb = np.full((300, 300, 3), 255, np.uint8)
+    rgb[100:112, 40:260] = (240, 60, 60)                             # light bar
+    rgb[160:180, 40:260] = 25                                        # board
+    rgb[112:160, 40:44] = 25; rgb[112:160, 256:260] = 25             # ends
+    rgb[112:160, 44:256] = 250                                       # the white heat-spreader, a shade off the backdrop
+    rgb[128:144, 120:180] = 120                                      # its logo
+    model = np.zeros((300, 300), np.float32)
+    model[100:112, 40:260] = 1; model[160:180, 40:260] = 1; model[112:160, 40:44] = 1; model[112:160, 256:260] = 1
+    model[128:144, 120:180] = 1                                      # the model saw everything except the white body
+    out = exact_cut(rgb, model, WHITE)
+    assert out[120, 80, 3] == 255 and out[150, 220, 3] == 255        # the body is solid again
+    assert out[20, 20, 3] == 0                                       # the backdrop is still gone
+
+
+def test_a_real_gap_stays_open():
+    rgb = np.full((300, 300, 3), 255, np.uint8)
+    yy, xx = np.mgrid[:300, :300]
+    ring = ((yy - 150) ** 2 + (xx - 150) ** 2 <= 80 ** 2) & ((yy - 150) ** 2 + (xx - 150) ** 2 > 45 ** 2)
+    rgb[ring] = 30                                                   # a dark band, the backdrop showing through its middle
+    model = ring.astype(np.float32)
+    out = exact_cut(rgb, model, WHITE)
+    assert out[150, 150, 3] == 0 and out[150, 90, 3] == 255
+
+
+def test_white_lettering_on_a_box_the_model_did_not_see_is_kept():
+    rgb = np.full((300, 300, 3), 255, np.uint8)
+    rgb[60:240, 60:240] = (200, 30, 30)                              # a red box
+    for i in range(6):
+        rgb[100:124, 80 + i * 24:92 + i * 24] = 255                  # white letters printed on it
+    model = np.zeros((300, 300), np.float32)
+    model[150:230, 100:200] = 1                                      # the model only picked out the picture on the box
+    out = exact_cut(rgb, model, WHITE)
+    assert out[110, 85, 3] == 255 and out[110, 205, 3] == 255 and out[70, 70, 3] == 255 and out[20, 20, 3] == 0
+
+
+def test_a_photo_is_left_alone_when_white_areas_cannot_be_told_apart():
+    rgb = np.full((300, 300, 3), 255, np.uint8)
+    yy, xx = np.mgrid[:300, :300]
+    rgb[((yy - 150) ** 2 + (xx - 150) ** 2 <= 110 ** 2) & ((yy - 150) ** 2 + (xx - 150) ** 2 > 100 ** 2)] = 30
+    inside = (yy - 150) ** 2 + (xx - 150) ** 2 <= 100 ** 2           # a thin dark outline round a large area that is
+    rgb[inside & ((yy + xx) % 4 == 0)] = 249                         # nearly, but not quite, flat backdrop white
+    model = (~inside & ((yy - 150) ** 2 + (xx - 150) ** 2 <= 110 ** 2)).astype(np.float32)
+    assert exact_cut(rgb, model, WHITE) is None
+
+
+def test_a_box_that_covers_much_of_the_edge_still_has_a_known_backdrop():
+    rgb = np.full((200, 200, 3), 255, np.uint8)
+    rgb[0:200, 12:188] = (200, 30, 30)                               # runs off the top and the bottom
+    rgb[50:90, :4] = 230                                             # and throws a little shadow on the edge
+    col, plain = background(rgb)
+    assert plain and col.tolist() == [255, 255, 255]
+    rgb[:8, :8] = (200, 30, 30)                                      # one corner is not backdrop: no longer certain
+    assert not background(rgb)[1]
+
+
+def test_a_subject_running_off_the_picture_is_not_cut_out():
+    rgb = np.dstack([np.tile(np.linspace(90, 200, 200), (200, 1)).T] * 3).astype(np.uint8)
+    art = mask(box=(slice(0, 200), slice(40, 120)))                  # a figure from the top edge to the bottom edge
+    assert model_cut(rgb, art, WHITE) is None
+    assert model_cut(rgb, mask(box=(slice(60, 140), slice(50, 150))), WHITE) is not None

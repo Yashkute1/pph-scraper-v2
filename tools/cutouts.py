@@ -19,6 +19,7 @@ import hashlib
 import io
 import ipaddress
 import os
+import re
 import shutil
 import sys
 from urllib.parse import urlsplit
@@ -26,6 +27,9 @@ from urllib.parse import urlsplit
 MAX_SIDE = 640
 WORK_SIDE = 1024                           # photos are cut at this size, then reduced
 MODEL = "birefnet-general-lite"
+BUSY = 0.03                                # share of the removed area with detail in it, above which a scene is left whole
+DOUBT = 0.02                               # unclear see-through area, as a share of the product, that stops a cut
+WHOLE = {"games"}                         # box art fills the picture: these photos are shown whole, never cut
 MAX_BYTES = 8 * 1024 * 1024
 MIN_KEEP, MAX_KEEP = 0.02, 0.97            # share of pixels kept; outside this the cut is not trusted
 
@@ -99,7 +103,13 @@ def background(rgb):
     col = np.median(ring[codes == np.bincount(codes).argmax()], axis=0)
     d = np.abs(ring - col).max(axis=1)
     near, mid = float((d <= 10).mean()), float(((d > 10) & (d <= 45)).mean())
-    return col, (near >= 0.6 and mid <= 0.10) or (near >= 0.35 and mid <= 0.03)
+    if (near >= 0.6 and mid <= 0.10) or (near >= 0.35 and mid <= 0.03):
+        return col, True
+    # A box or a large product may cover much of the edge. The backdrop is still known when all four corners show it.
+    c = max(4, r * 2)
+    corners = [rgb[:c, :c], rgb[:c, -c:], rgb[-c:, :c], rgb[-c:, -c:]]
+    clean = all(float((np.abs(x.astype(np.int32) - col).max(axis=2) <= 6).mean()) >= 0.98 for x in corners)
+    return col, bool(clean and near >= 0.3 and mid <= 0.08)
 
 
 def _erode(mask, k):
@@ -201,9 +211,117 @@ def exact_cut(rgb, model, col):
     unmixed = np.clip((diff * span).sum(axis=2) / np.maximum(power, 1.0), 0, 1)
     alpha = np.where(ok, unmixed, alpha)
 
+    alpha, doubt = _mend(alpha, dist, model)
+    if doubt > DOUBT:
+        return None
+
     a = np.clip(alpha, 1e-3, 1)[..., None]
     fg = np.where(alpha[..., None] >= 0.999, f, np.clip(col + diff / a, 0, 255))      # take the background back out
     return np.dstack([fg, alpha * 255]).round().astype(np.uint8)
+
+
+def _four_sided(area):
+    """True when a filled shape is close to a quadrilateral (a screen, a panel), unlike a loop or a gap between legs."""
+    import numpy as np
+    from scipy import ndimage
+    from scipy.spatial import ConvexHull, QhullError
+    edge = area & ~ndimage.binary_erosion(area)
+    pts = np.argwhere(edge).astype(np.float64)
+    if len(pts) < 8:
+        return False
+    try:
+        poly = pts[ConvexHull(pts).vertices]
+    except QhullError:
+        return False
+    size = lambda q: 0.5 * abs(float(np.dot(q[:, 0], np.roll(q[:, 1], -1)) - np.dot(q[:, 1], np.roll(q[:, 0], -1))))
+    hull = size(poly)
+    if hull <= 0 or area.sum() < 0.93 * hull:
+        return False
+    while len(poly) > 4:                                             # drop the corner that matters least, until four are left
+        prev, nxt = np.roll(poly, 1, axis=0), np.roll(poly, -1, axis=0)
+        lost = 0.5 * np.abs((poly[:, 0] - prev[:, 0]) * (nxt[:, 1] - prev[:, 1]) - (poly[:, 1] - prev[:, 1]) * (nxt[:, 0] - prev[:, 0]))
+        poly = np.delete(poly, int(lost.argmin()), axis=0)
+    if size(poly) < 0.93 * hull:
+        return False
+    sides = np.roll(poly, -1, axis=0) - poly                         # a screen or a label, seen at an angle, keeps
+    length = np.hypot(sides[:, 0], sides[:, 1])                      # opposite sides alike and no sharp corner
+    if length.min() <= 0:
+        return False
+    turn = [abs(float(np.dot(sides[i], sides[i - 1])) / (length[i] * length[i - 1])) for i in range(4)]
+    alike = min(length[0], length[2]) / max(length[0], length[2]) > 0.6 and min(length[1], length[3]) / max(length[1], length[3]) > 0.6
+    return bool(alike and max(turn) < 0.58)
+
+
+def _mend(alpha, dist, model):
+    """Decide what the background-coloured areas inside the product's outline are. Returns (alpha, doubt).
+
+    White parts of a product on a white backdrop look like background, and the model misses them often (a white memory
+    stick, white keycaps, a logo printed on a box). The gap inside a headset band or a strap looks the same. Each such
+    area is one of three things:
+      product   the model says so; or it is walled in on every side and is either shaded rather than flat backdrop
+                white, or a large four-sided panel (a white screen, a label): made solid;
+      a gap     open to the outside, or flat backdrop colour that the model also calls background: left open;
+      unclear   walled in, and neither clearly one nor the other.
+    `doubt` is the unclear area as a share of the product. The caller gives up on the photo when it is large, and the
+    whole photo is shown instead of a cut that might have holes in it."""
+    import numpy as np
+    from scipy import ndimage
+    solid = alpha > 0.5
+    total = int(solid.sum())
+    if not total:
+        return alpha, 0.0
+    reach = max(3, round(max(alpha.shape) * 0.02))
+    pad = reach + 2
+    closed = ndimage.binary_closing(np.pad(solid, pad), iterations=reach)[pad:-pad, pad:-pad]
+    walled = ndimage.binary_fill_holes(solid)
+    inside = ndimage.binary_fill_holes(closed | solid) & ~solid
+    labels, n = ndimage.label(inside)
+    if not n:
+        return alpha, 0.0
+    least = max(40, round(alpha.size * 0.0002))
+    out, unclear = alpha, 0
+    for i, box in enumerate(ndimage.find_objects(labels), start=1):
+        area = labels[box] == i
+        size = int(area.sum())
+        if size < 6:
+            continue
+        enclosed = bool(walled[box][area].all())
+        core = ndimage.binary_erosion(area, iterations=2)
+        probe = core if core.sum() >= max(20, size // 8) else area
+        flat = float((dist[box][probe] < 5).mean())
+        seen = float((model[box][area] > 0.5).mean())
+        shade = float(np.median(dist[box][probe]))
+        printed = False
+        if enclosed and seen < 0.5:
+            # Lettering on a box the model did not notice: solid on every side for some distance, and the model has
+            # nothing to say about the surroundings either. Where the model does see the surroundings as product
+            # and still leaves this out, it means a hole.
+            r = min(40, max(4, round(0.5 * size ** 0.5)))
+            wide = tuple(slice(max(0, b.start - r), b.stop + r) for b in box)
+            here = labels[wide] == i
+            ring = ndimage.binary_dilation(here, iterations=r) & ~here
+            printed = float(walled[wide][ring].mean()) >= 0.98 and float(model[wide][ring].mean()) < 0.5
+        if seen >= 0.5:
+            fill = True
+        elif not enclosed:                                           # open to the outside: backdrop, or a shadow on it
+            fill = False
+        elif size < least:                                           # too small to judge, except lettering on a box
+            fill = printed or (flat < 0.3 and shade < 20)
+        elif printed or (size >= 0.03 * total and _four_sided(area)):  # or a white screen or label the model missed
+            fill = True
+        elif flat < 0.65:                                            # not flat backdrop white: a shaded white surface,
+            fill = shade < 20                                        # unless it is as dark as a shadow
+        elif flat >= 0.9 or (flat >= 0.7 and size < 0.05 * total):
+            fill = False
+            if seen >= 0.15:
+                unclear += size
+        else:
+            fill = False
+            unclear += size
+        if fill:
+            out = out.copy() if out is alpha else out
+            out[box][area] = 1.0
+    return out, unclear / float(total)
 
 
 def model_cut(rgb, model, col):
@@ -216,6 +334,20 @@ def model_cut(rgb, model, col):
     kept = float((model > 0.5).mean())
     unsure = float(((model > 0.15) & (model < 0.85)).mean())
     if kept <= 0 or unsure > 0.25 * kept:
+        return None
+    # A subject that runs off the picture on several sides is part of a scene (cover art, a lifestyle photo), not a
+    # product standing on a backdrop. Cutting it out leaves a torn piece, so the whole photo is shown instead.
+    solid = model > 0.5
+    r = max(2, round(min(solid.shape) * 0.01))
+    sides = [float(solid[:r].mean()), float(solid[-r:].mean()), float(solid[:, :r].mean()), float(solid[:, -r:].mean())]
+    if sum(x > 0.08 for x in sides) >= 2 or max(sides) > 0.5:
+        return None
+    # Without a plain backdrop nothing checks the model, and on a busy picture (a desk, a room, printed artwork) it
+    # often picks one thing out of the middle. Only a smooth studio backdrop is cut away.
+    grey = rgb.astype(np.float32).mean(axis=2)
+    edges = np.hypot(ndimage.sobel(grey, 0), ndimage.sobel(grey, 1)) / 4
+    away = ndimage.binary_erosion(model < 0.3, iterations=4)
+    if away.any() and float((edges[away] > 10).mean()) > BUSY:
         return None
     return np.dstack([rgb, (model * 255).round()]).astype(np.uint8)
 
@@ -298,7 +430,7 @@ def _download(url):
     return data if len(data) <= MAX_BYTES else None
 
 
-def cmd_list(path, shard, shards, limit, only=None):
+def cmd_list(path, shard, shards, limit, only=None, match=None):
     from pymongo import MongoClient
 
     from pph import DB_NAME
@@ -307,18 +439,31 @@ def cmd_list(path, shard, shards, limit, only=None):
         raise SystemExit("MONGO_URI is not set")
     db = MongoClient(uri, serverSelectionTimeoutMS=20000)[DB_NAME]
     done = parse_manifest(open("manifest.txt").read()) if os.path.exists("manifest.txt") else {}
-    urls = (d.get("image") for d in db.products_v2.find({"image": {"$nin": ["", None]}}, {"image": 1})
-            .sort([("any_stock", -1), ("store_count", -1)]))
+    docs = list(db.products_v2.find({"image": {"$nin": ["", None]}}, {"image": 1, "category_slug": 1, "title": 1})
+                .sort([("any_stock", -1), ("store_count", -1)]))
+    whole = {cutout_key(d["image"]) for d in docs if d.get("category_slug") in WHOLE and safe_url(d["image"])}
+    urls = (d.get("image") for d in docs)
     if only is not None:                                             # a hand-picked set, for checking a change before a full run
         seen, rows = set(), []
         for u in urls:
             if u and safe_url(u) and cutout_key(u) in only and cutout_key(u) not in seen:
                 seen.add(cutout_key(u)); rows.append((cutout_key(u), u))
+    elif match is not None:                                          # a study set by title: lines of "pattern<TAB>how many"
+        seen, rows = set(), []
+        for line in match:
+            pattern, _, count = line.partition("\t")
+            want, found = re.compile(pattern, re.I), 0
+            for d in docs:
+                u = d.get("image")
+                if found >= int(count or 50):
+                    break
+                if u and safe_url(u) and want.search(d.get("title") or "") and cutout_key(u) not in seen:
+                    seen.add(cutout_key(u)); rows.append((cutout_key(u), u)); found += 1
     else:
         rows = todo(urls, done, shard, shards, limit)
     with open(path, "w", encoding="utf-8") as f:
-        f.writelines(f"{k} {u}\n" for k, u in rows)
-    print({"todo": len(rows), "already_done": len(done)})
+        f.writelines(f"{k} {'-' if k in whole else u}\n" for k, u in rows)
+    print({"todo": len(rows), "shown_whole": sum(k in whole for k, _ in rows), "already_done": len(done)})
 
 
 def _session():
@@ -343,6 +488,9 @@ def cmd_make(path, out):
         if not key or not url:
             continue
         status = "skip"
+        if url == "-":                                               # a category that is shown whole
+            results[key] = status
+            continue
         try:
             try:
                 data = _download(url)
@@ -394,7 +542,8 @@ def main(argv=None):
         shard, shards = (int(x) for x in a[a.index("--shard") + 1].split("/")) if "--shard" in a else (0, 1)
         limit = int(a[a.index("--limit") + 1]) if "--limit" in a else 1500
         only = set(open(a[a.index("--keys") + 1]).read().split()) if "--keys" in a else None
-        return cmd_list(a[1], shard, shards, limit, only)
+        match = [x for x in open(a[a.index("--match") + 1]).read().splitlines() if x.strip()] if "--match" in a else None
+        return cmd_list(a[1], shard, shards, limit, only, match)
     if a[:1] == ["make"]:
         return cmd_make(a[1], a[2])
     if a[:1] == ["merge"]:
