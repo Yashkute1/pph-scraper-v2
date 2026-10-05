@@ -138,6 +138,17 @@ def exact_cut(rgb, model, col):
     m = np.where((dist < 18) & ~core, 0.0, model)
     floor = np.maximum(dist / 255.0, np.clip((dist - 60) / 90.0, 0, 1))
     floor = np.where(dist < 5, 0.0, floor)                           # compression noise in the background
+    # Things printed on the background that do not touch the product (a slogan, a row of feature badges) are not the
+    # product. A separate island is kept only if the model recognises some of it; a part the model missed is still
+    # safe, because it is joined to the rest of the product.
+    from scipy import ndimage
+    islands, count = ndimage.label(dist >= 40)
+    if count > 1:
+        idx = np.arange(1, count + 1)
+        seen = ndimage.sum_labels(model > 0.5, islands, idx) / np.maximum(ndimage.sum_labels(np.ones_like(model), islands, idx), 1)
+        stray = np.concatenate([[False], seen < 0.03])[islands]
+        if stray.any() and not stray[dist >= 40].all():              # never drop everything
+            floor = np.where(_dilate(stray, 5), np.minimum(floor, m), floor)
     alpha = np.maximum(floor, m)
 
     gone = alpha < 0.05
@@ -171,9 +182,9 @@ def cut_photo(im, mask_of):
     import numpy as np
     from PIL import Image
     if im.mode in ("RGBA", "LA", "P"):
+        # A photo that arrives with transparency is laid on white and cut like any other. Stores often ship a white
+        # square with a transparent margin, which is not a cut-out at all.
         rgba = im.convert("RGBA")
-        if rgba.getchannel("A").getextrema()[0] < 16 and usable(rgba):
-            return rgba                                              # the store already removed the background
         flat = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
         flat.alpha_composite(rgba)
         im = flat
