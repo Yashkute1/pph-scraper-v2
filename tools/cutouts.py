@@ -120,6 +120,39 @@ def _blur(channel, radius):
     return np.asarray(Image.fromarray(channel.astype("uint8")).filter(ImageFilter.BoxBlur(radius)), dtype=np.float32)
 
 
+def _extras(model, islands):
+    """Where the model marked something that is not the product: a mask of those places.
+
+    The model often counts a slogan or a feature badge as an object of its own. Each separate thing it marks is
+    compared with the largest one, which is taken to be the product:
+    - a speck (under 4% of its size) goes;
+    - something small (under 20%) that sits wholly above the product goes: that is where stores put rows of badges,
+      while a part that belongs with the product sits beside or below it;
+    - lettering goes: many small pieces, none of them the bulk.
+    A white case stays whole, because the model marks it as one thing however many pieces its outline breaks into."""
+    import numpy as np
+    from scipy import ndimage
+    regions, n = ndimage.label(_dilate(model > 0.5, 7))
+    if n < 2:
+        return np.zeros(model.shape, bool)
+    size = ndimage.sum_labels(np.ones_like(model), regions, np.arange(1, n + 1))
+    boxes = ndimage.find_objects(regions)
+    main = int(size.argmax())
+    top = boxes[main][0].start
+    drop = size < 0.04 * size[main]
+    for r in range(n):
+        if r == main or drop[r]:
+            continue
+        rows = boxes[r][0]
+        if size[r] < 0.2 * size[main] and rows.stop <= top:
+            drop[r] = True
+        elif size[r] <= 0.6 * size[main]:
+            pieces = np.bincount(islands[boxes[r]][(regions[boxes[r]] == r + 1) & (islands[boxes[r]] > 0)])
+            pieces = pieces[pieces > 0]
+            drop[r] = len(pieces) >= 6 and pieces.max() < 0.35 * pieces.sum()
+    return np.concatenate([[False], drop])[regions]
+
+
 def exact_cut(rgb, model, col):
     """Cut a photo whose background colour `col` is known. `model` is the model's mask, HxW floats from 0 to 1.
 
@@ -146,24 +179,9 @@ def exact_cut(rgb, model, col):
     # from the main product and much smaller than it is not kept. (A white case stays whole: the model marks it as
     # one region, however many pieces its outline breaks into.)
     islands, count = ndimage.label(dist >= 40)
-    regions, n = ndimage.label(_dilate(model > 0.5, 7))
-    if n > 1:
-        idx = np.arange(1, n + 1)
-        size = ndimage.sum_labels(np.ones_like(model), regions, idx)
-        rows = np.array(ndimage.center_of_mass(np.ones_like(model), regions, idx))[:, 0] / dist.shape[0]
-        main = int(size.argmax())
-        drop = size < 0.04 * size[main]                              # a speck beside the product
-        drop |= (size < 0.15 * size[main]) & ((rows < 0.2) | (rows > 0.88))      # a badge in the top or bottom margin
-        for r in np.flatnonzero(~drop):                              # lettering: many small pieces, none of them the bulk
-            if r == main or size[r] > 0.6 * size[main]:
-                continue
-            pieces = np.bincount(islands[(regions == r + 1) & (islands > 0)])
-            pieces = pieces[pieces > 0]
-            if len(pieces) >= 6 and pieces.max() < 0.35 * pieces.sum():
-                drop[r] = True
-        minor = np.concatenate([[False], drop])[regions]
-        model = np.where(minor, 0.0, model)
-        m = np.where(minor, 0.0, m)
+    minor = _extras(model, islands)
+    model = np.where(minor, 0.0, model)
+    m = np.where(minor, 0.0, m)
     if count > 1:
         idx = np.arange(1, count + 1)
         seen = ndimage.sum_labels(model > 0.5, islands, idx) / np.maximum(ndimage.sum_labels(np.ones_like(model), islands, idx), 1)
@@ -188,9 +206,13 @@ def exact_cut(rgb, model, col):
     return np.dstack([fg, alpha * 255]).round().astype(np.uint8)
 
 
-def model_cut(rgb, model):
-    """For a photo with no plain background: the model's mask as it is, or None when the model is not sure."""
+def model_cut(rgb, model, col):
+    """For a photo with no plain background: the model's mask, less slogans and badges, or None when the model is not
+    sure. `col` is the commonest edge colour; it is only used to tell lettering from solid things."""
     import numpy as np
+    from scipy import ndimage
+    islands, _ = ndimage.label(np.abs(rgb.astype(np.float32) - col).max(axis=2) >= 40)
+    model = np.where(_extras(model, islands), 0.0, model)
     kept = float((model > 0.5).mean())
     unsure = float(((model > 0.15) & (model < 0.85)).mean())
     if kept <= 0 or unsure > 0.25 * kept:
@@ -218,7 +240,7 @@ def cut_photo(im, mask_of, debug=None):
         raw.save(debug + "_m.png")
     model = np.asarray(raw, dtype=np.float32) / 255.0
     col, plain = background(rgb)
-    out = exact_cut(rgb, model, col) if plain else model_cut(rgb, model)
+    out = exact_cut(rgb, model, col) if plain else model_cut(rgb, model, col)
     if out is None:
         return None
     rgba = Image.fromarray(out, "RGBA")
