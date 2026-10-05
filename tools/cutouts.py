@@ -145,13 +145,25 @@ def exact_cut(rgb, model, col):
     # The model often counts a slogan or a feature badge as an object of its own. Anything it marks that is separate
     # from the main product and much smaller than it is not kept. (A white case stays whole: the model marks it as
     # one region, however many pieces its outline breaks into.)
+    islands, count = ndimage.label(dist >= 40)
     regions, n = ndimage.label(_dilate(model > 0.5, 7))
     if n > 1:
-        size = ndimage.sum_labels(np.ones_like(model), regions, np.arange(1, n + 1))
-        minor = np.concatenate([[False], size < 0.04 * size.max()])[regions]
+        idx = np.arange(1, n + 1)
+        size = ndimage.sum_labels(np.ones_like(model), regions, idx)
+        rows = np.array(ndimage.center_of_mass(np.ones_like(model), regions, idx))[:, 0] / dist.shape[0]
+        main = int(size.argmax())
+        drop = size < 0.04 * size[main]                              # a speck beside the product
+        drop |= (size < 0.15 * size[main]) & ((rows < 0.2) | (rows > 0.88))      # a badge in the top or bottom margin
+        for r in np.flatnonzero(~drop):                              # lettering: many small pieces, none of them the bulk
+            if r == main or size[r] > 0.6 * size[main]:
+                continue
+            pieces = np.bincount(islands[(regions == r + 1) & (islands > 0)])
+            pieces = pieces[pieces > 0]
+            if len(pieces) >= 6 and pieces.max() < 0.35 * pieces.sum():
+                drop[r] = True
+        minor = np.concatenate([[False], drop])[regions]
         model = np.where(minor, 0.0, model)
         m = np.where(minor, 0.0, m)
-    islands, count = ndimage.label(dist >= 40)
     if count > 1:
         idx = np.arange(1, count + 1)
         seen = ndimage.sum_labels(model > 0.5, islands, idx) / np.maximum(ndimage.sum_labels(np.ones_like(model), islands, idx), 1)
@@ -306,7 +318,11 @@ def cmd_make(path, out):
             continue
         status = "skip"
         try:
-            data = _download(url)
+            try:
+                data = _download(url)
+            except OSError as e:                                     # the store did not answer: leave it for the next run
+                print("later", key, type(e).__name__)
+                continue
             if data:
                 im = Image.open(io.BytesIO(data))
                 im.load()

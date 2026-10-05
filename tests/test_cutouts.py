@@ -192,3 +192,20 @@ def test_a_badge_the_model_also_marked_is_dropped_but_a_second_product_is_not():
     two = mask(box=box)
     two[150:190, 60:140] = 1.0
     assert exact_cut(rgb2, two, WHITE)[170, 100, 3] == 255
+
+
+def test_lettering_and_margin_badges_are_dropped_even_when_large():
+    rgb = np.full((400, 400, 3), 255, np.uint8)
+    rgb[200:260, 80:320] = 20                                        # a keyboard: wide and thin
+    model = np.zeros((400, 400), np.float32)
+    model[200:260, 80:320] = 1.0
+    for i in range(14):                                              # a slogan above it, a third of its size, in separate letters
+        rgb[110:130, 90 + i * 16:100 + i * 16] = 30
+        model[110:130, 90 + i * 16:100 + i * 16] = 1.0
+    rgb[20:50, 40:90] = 30                                           # a badge in the top margin, about a tenth of its size
+    model[20:50, 40:90] = 1.0
+    rgb[300:360, 150:250] = 40                                       # the mouse that comes with it, lower down
+    model[300:360, 150:250] = 1.0
+    out = exact_cut(rgb, model, WHITE)
+    assert out[120, 95, 3] == 0 and out[35, 60, 3] == 0              # slogan and badge go
+    assert out[230, 200, 3] == 255 and out[330, 200, 3] == 255       # keyboard and mouse stay
