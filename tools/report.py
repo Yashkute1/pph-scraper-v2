@@ -11,7 +11,9 @@ def build(root, stores, when):
             d = json.loads(f.read_text())
         except ValueError:
             continue
-        runs[d.get("store") or f.stem] = d
+        name = d.get("store") or f.stem
+        if runs.get(name, {}).get("status") not in ("ok", "dry-run"):   # a store tried twice counts by its good attempt
+            runs[name] = d
     ok = sum(1 for s in stores if runs.get(s, {}).get("status") in ("ok", "dry-run"))
     lines = [f"# Scraper status", "", f"Last run: {when}. {ok} of {len(stores)} stores ok.", "",
              "| store | status | fetched | written | previous | seconds | note |", "|---|---|---|---|---|---|---|"]

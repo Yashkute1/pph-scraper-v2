@@ -1,4 +1,8 @@
-"""Command line: `python -m pph.run scrape <store> [--dry-run] [--max-pages N] [--time-budget MIN]` and `rollup`."""
+"""Command line: `python -m pph.run scrape <store> [--dry-run] [--max-pages N] [--time-budget MIN]`, `rollup`
+and `health [--hours N]`.
+
+Exit codes for `scrape`: 0 done, 1 failed or incomplete, 3 the store refused this machine (old prices are kept; the
+workflow tries again from another machine and does not count it as a failure)."""
 import argparse
 import json
 import os
@@ -16,6 +20,7 @@ from .stores import STORES
 from . import store_db
 
 OUT = pathlib.Path("out")
+BLOCKED_EXIT = 3
 
 
 def safe_error(e):
@@ -89,7 +94,9 @@ def scrape(store, dry_run=False, max_pages=None, time_budget=None, db=None, now=
                    "previous_count": 0, "note": "database: " + safe_error(e)}
     run["seconds"] = seconds
     _report(store, run)
-    return (0 if run["status"] in ("ok", "dry-run") and (not dry_run or (offers and complete and not blocked)) else 1), run
+    if run["status"] == "blocked" or (dry_run and blocked):
+        return BLOCKED_EXIT, run
+    return (0 if run["status"] in ("ok", "dry-run") and (not dry_run or (offers and complete)) else 1), run
 
 
 def rollup_cmd(db=None, now=None):
@@ -98,6 +105,19 @@ def rollup_cmd(db=None, now=None):
     out = store_db.write_rollup(db, now or _utcnow())
     _report("rollup", out)
     return 0, out
+
+
+def health_cmd(hours, db=None, now=None, stores=None):
+    """Exit 1 when a store has had no good run for `hours`: the one situation worth an alert."""
+    db = db if db is not None else _connect()
+    stale = store_db.stale_stores(db, list(stores or STORES), now or _utcnow(), hours)
+    out = {"stale": stale, "hours": hours}
+    _report("health", out)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary and stale:
+        with open(summary, "a") as f:
+            f.write(f"\nNo good run in the last {hours} hours: {', '.join(stale)}\n")
+    return (1 if stale else 0), out
 
 
 def main(argv=None):
@@ -109,10 +129,14 @@ def main(argv=None):
     s.add_argument("--max-pages", type=int)
     s.add_argument("--time-budget", type=int, help="minutes; stop cleanly and keep what was fetched")
     sub.add_parser("rollup")
+    h = sub.add_parser("health")
+    h.add_argument("--hours", type=int, default=26)
     a = ap.parse_args(argv)
     try:
         if a.cmd == "rollup":
             return rollup_cmd()[0]
+        if a.cmd == "health":
+            return health_cmd(a.hours)[0]
         if a.store not in STORES:
             print(f"unknown store: {a.store}", file=sys.stderr)
             return 2

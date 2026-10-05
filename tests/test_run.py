@@ -56,7 +56,7 @@ def test_dry_run_needs_no_database(env):
 def test_fatal_block_is_reported_and_saves_what_was_fetched(env):
     db = mongomock.MongoClient().pph_site
     code, run = go([raw(1), raw(2)], db, error=BlockedError("u", 403, fatal=True))
-    assert (code, run["status"], run["written"]) == (1, "blocked", 2)
+    assert (code, run["status"], run["written"]) == (3, "blocked", 2)     # 3 = refused, retried elsewhere, not a failure
 
 
 def test_empty_listing_is_failed(env):
@@ -131,3 +131,18 @@ def test_incomplete_feed_is_partial_and_keeps_fetched(env):
     go([raw(n) for n in range(10)], db)
     code, run = go([raw(n) for n in range(9)], db, error=IncompleteError("u"))
     assert (code, run["status"], run["note"], run["written"]) == (1, "partial", "store stopped responding part-way", 9)
+
+
+def test_health_flags_only_stores_without_a_recent_good_run(env):
+    from datetime import timedelta
+    db = mongomock.MongoClient().pph_site
+    db.scrape_runs.insert_many([
+        {"store": "a", "status": "ok", "started": NOW - timedelta(hours=3)},
+        {"store": "b", "status": "ok", "started": NOW - timedelta(hours=40)},
+        {"store": "b", "status": "blocked", "started": NOW - timedelta(hours=1)},      # a refusal is not a good run
+        {"store": "c", "status": "ok", "started": NOW - timedelta(hours=20)},
+        {"store": "c", "status": "blocked", "started": NOW - timedelta(hours=2)},      # blocked once, still fresh enough
+    ])
+    code, out = R.health_cmd(26, db=db, now=NOW, stores=["a", "b", "c", "never"])
+    assert (code, out["stale"]) == (1, ["b", "never"])
+    assert R.health_cmd(26, db=db, now=NOW, stores=["a", "c"]) [0] == 0

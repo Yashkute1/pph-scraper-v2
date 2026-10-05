@@ -13,3 +13,11 @@ def test_report_table(tmp_path):
     assert "| c | no report |" in md                      # a job that died before reporting is still listed
     assert "Products: 7" in md and "1.0 MB" in md and "2026-10-04 03:00 UTC" in md
     assert "1 of 3 stores ok" in md
+
+
+def test_a_retried_store_is_reported_by_its_good_attempt(tmp_path):
+    for d, status in (("out-a", "blocked"), ("out-retry-a", "ok")):
+        (tmp_path / d).mkdir()
+        (tmp_path / d / "a.json").write_text(json.dumps({"store": "a", "status": status, "fetched": 5, "written": 5, "previous_count": 5, "seconds": 1, "note": ""}))
+    md = build(tmp_path, ["a"], "t")
+    assert "| a | ok |" in md and "blocked" not in md and "1 of 1 stores ok" in md
