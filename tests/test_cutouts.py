@@ -157,10 +157,24 @@ def test_cut_photo_end_to_end():
     im = Image.fromarray(rgb)
     out = cut_photo(im, lambda _: Image.fromarray((mask(box=box) * 255).astype("uint8")))
     assert out.mode == "RGBA" and out.getpixel((100, 100))[3] == 255 and out.getpixel((5, 5))[3] == 0
-    ready = Image.new("RGBA", (200, 200), (0, 0, 0, 0))
-    ImageDraw.Draw(ready).rectangle((50, 60, 150, 140), fill=(20, 20, 20, 255))
-    called = []
-    same = cut_photo(ready, lambda _: called.append(1))
-    assert same.getpixel((100, 100))[3] == 255 and not called        # a photo that already has no background is left alone
+    # a "transparent" photo that is really a white square with a clear margin is cut like any other
+    framed = Image.new("RGBA", (200, 200), (0, 0, 0, 0))
+    ImageDraw.Draw(framed).rectangle((20, 20, 180, 180), fill=(255, 255, 255, 255))
+    ImageDraw.Draw(framed).rectangle((50, 60, 150, 140), fill=(20, 20, 20, 255))
+    cut = cut_photo(framed, lambda _: Image.fromarray((mask(box=box) * 255).astype("uint8")))
+    assert cut.getpixel((100, 100))[3] == 255 and cut.getpixel((30, 30))[3] == 0
     noise = Image.fromarray(np.random.default_rng(2).integers(0, 255, (200, 200, 3), dtype=np.uint8))
     assert cut_photo(noise, lambda _: Image.new("L", (200, 200), 128)) is None
+
+
+def test_text_and_badges_printed_on_the_background_are_dropped_but_missed_parts_are_not():
+    rgb, box = scene()
+    rgb[10:20, 30:170] = 30                                          # a slogan across the top, well away from the product
+    rgb[60:140, 150:170] = 20                                        # a part joined to the product that the model missed
+    out = exact_cut(rgb, mask(box=box), WHITE)
+    assert out[15, 100, 3] == 0                                      # the slogan goes
+    assert out[100, 160, 3] == 255 and out[100, 100, 3] == 255       # the joined part and the product stay
+    both = mask(box=box)
+    both[10:20, 30:170] = 1.0                                        # same slogan, but the model says it is part of the product
+    assert exact_cut(rgb, both, WHITE)[15, 100, 3] == 255
+    assert exact_cut(rgb, mask(), WHITE)[100, 100, 3] == 255         # a model that saw nothing does not empty the picture
