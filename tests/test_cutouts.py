@@ -178,3 +178,17 @@ def test_text_and_badges_printed_on_the_background_are_dropped_but_missed_parts_
     both[10:20, 30:170] = 1.0                                        # same slogan, but the model says it is part of the product
     assert exact_cut(rgb, both, WHITE)[15, 100, 3] == 255
     assert exact_cut(rgb, mask(), WHITE)[100, 100, 3] == 255         # a model that saw nothing does not empty the picture
+
+
+def test_a_badge_the_model_also_marked_is_dropped_but_a_second_product_is_not():
+    rgb, box = scene()
+    rgb[8:16, 20:40] = 30                                            # a feature badge in the corner
+    both = mask(box=box)
+    both[8:16, 20:40] = 1.0                                          # the model marks it as an object of its own
+    out = exact_cut(rgb, both, WHITE)
+    assert out[12, 30, 3] == 0 and out[100, 100, 3] == 255
+    rgb2, _ = scene()
+    rgb2[150:190, 60:140] = 40                                       # a second item of similar size (a card beside its box)
+    two = mask(box=box)
+    two[150:190, 60:140] = 1.0
+    assert exact_cut(rgb2, two, WHITE)[170, 100, 3] == 255
