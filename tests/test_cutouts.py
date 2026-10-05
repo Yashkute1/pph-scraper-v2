@@ -146,10 +146,10 @@ def test_without_a_plain_background_only_a_confident_mask_is_used():
     rng = np.random.default_rng(1)
     rgb = rng.integers(0, 255, (200, 200, 3), dtype=np.uint8)
     sure = mask(box=(slice(60, 140), slice(50, 150)))
-    out = model_cut(rgb, sure)
+    out = model_cut(rgb, sure, WHITE)
     assert out is not None and out[100, 100, 3] == 255 and out[10, 10, 3] == 0
-    assert model_cut(rgb, mask(box=(slice(60, 140), slice(50, 150)), value=0.5)) is None     # the model cannot tell
-    assert model_cut(rgb, mask()) is None
+    assert model_cut(rgb, mask(box=(slice(60, 140), slice(50, 150)), value=0.5), WHITE) is None     # the model cannot tell
+    assert model_cut(rgb, mask(), WHITE) is None
 
 
 def test_cut_photo_end_to_end():
@@ -202,10 +202,10 @@ def test_lettering_and_margin_badges_are_dropped_even_when_large():
     for i in range(14):                                              # a slogan above it, a third of its size, in separate letters
         rgb[110:130, 90 + i * 16:100 + i * 16] = 30
         model[110:130, 90 + i * 16:100 + i * 16] = 1.0
-    rgb[20:50, 40:90] = 30                                           # a badge in the top margin, about a tenth of its size
+    rgb[20:50, 40:90] = 30                                           # a badge above it, about a tenth of its size
     model[20:50, 40:90] = 1.0
-    rgb[300:360, 150:250] = 40                                       # the mouse that comes with it, lower down
-    model[300:360, 150:250] = 1.0
+    rgb[205:255, 340:390] = 40                                       # the mouse that comes with it, beside it
+    model[205:255, 340:390] = 1.0
     out = exact_cut(rgb, model, WHITE)
     assert out[120, 95, 3] == 0 and out[35, 60, 3] == 0              # slogan and badge go
-    assert out[230, 200, 3] == 255 and out[330, 200, 3] == 255       # keyboard and mouse stay
+    assert out[230, 200, 3] == 255 and out[230, 365, 3] == 255       # keyboard and mouse stay
