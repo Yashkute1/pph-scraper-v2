@@ -1,6 +1,6 @@
 name: Cutouts check
 
-# Cuts a fixed set of photos with the code on this branch and keeps the results as a download, without publishing.
+# Cuts a study set of photos (by title in tools/check_match.txt, else the keys in tools/check_keys.txt) with the code on this branch and keeps the results as a download, without publishing.
 # Used to look at a change to the method before a full run. Starts only from a branch named cutouts-check/*.
 on:
   push:
@@ -28,7 +28,9 @@ jobs:
       - name: Look up the photos
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}          # this step only reads image addresses; it downloads nothing
-        run: python -m tools.cutouts list todo.txt --keys tools/check_keys.txt
+        run: |
+          if [ -s tools/check_match.txt ]; then python -m tools.cutouts list todo.txt --match tools/check_match.txt
+          else python -m tools.cutouts list todo.txt --keys tools/check_keys.txt; fi
       - uses: actions/cache@v4
         with:
           path: ~/.u2net
