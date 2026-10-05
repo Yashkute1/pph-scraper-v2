@@ -2,7 +2,10 @@ version: 2
 updates:
   - package-ecosystem: pip
     directory: "/"
-    schedule: { interval: weekly }
+    schedule: { interval: monthly }
+    ignore:
+      # The test double for the database (mongomock) does not work with newer pymongo yet; upgrade both together by hand.
+      - dependency-name: pymongo
   - package-ecosystem: github-actions
     directory: "/"
-    schedule: { interval: weekly }
+    schedule: { interval: monthly }

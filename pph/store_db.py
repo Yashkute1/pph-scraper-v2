@@ -95,6 +95,18 @@ def write_store(db, store, offers, now, blocked, started=None, note="", complete
     return run
 
 
+def stale_stores(db, stores, now, hours):
+    """Stores whose latest good run started more than `hours` ago, or that have never had one."""
+    from datetime import timedelta
+    cutoff = now - timedelta(hours=hours)
+    out = []
+    for s in stores:
+        last = db.scrape_runs.find_one({"store": s, "status": "ok"}, sort=[("started", -1)])
+        if not last or last["started"] < cutoff:
+            out.append(s)
+    return out
+
+
 def write_rollup(db, now):
     """Rebuild products_v2 from current offers. Keeps the previous rows if there are no offers at all."""
     fields = {"store": 1, "url": 1, "title": 1, "price": 1, "mrp": 1, "in_stock": 1, "image": 1, "brand": 1,
