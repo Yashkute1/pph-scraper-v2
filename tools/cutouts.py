@@ -142,6 +142,15 @@ def exact_cut(rgb, model, col):
     # product. A separate island is kept only if the model recognises some of it; a part the model missed is still
     # safe, because it is joined to the rest of the product.
     from scipy import ndimage
+    # The model often counts a slogan or a feature badge as an object of its own. Anything it marks that is separate
+    # from the main product and much smaller than it is not kept. (A white case stays whole: the model marks it as
+    # one region, however many pieces its outline breaks into.)
+    regions, n = ndimage.label(_dilate(model > 0.5, 7))
+    if n > 1:
+        size = ndimage.sum_labels(np.ones_like(model), regions, np.arange(1, n + 1))
+        minor = np.concatenate([[False], size < 0.04 * size.max()])[regions]
+        model = np.where(minor, 0.0, model)
+        m = np.where(minor, 0.0, m)
     islands, count = ndimage.label(dist >= 40)
     if count > 1:
         idx = np.arange(1, count + 1)
@@ -251,7 +260,7 @@ def _download(url):
     return data if len(data) <= MAX_BYTES else None
 
 
-def cmd_list(path, shard, shards, limit):
+def cmd_list(path, shard, shards, limit, only=None):
     from pymongo import MongoClient
 
     from pph import DB_NAME
@@ -262,7 +271,13 @@ def cmd_list(path, shard, shards, limit):
     done = parse_manifest(open("manifest.txt").read()) if os.path.exists("manifest.txt") else {}
     urls = (d.get("image") for d in db.products_v2.find({"image": {"$nin": ["", None]}}, {"image": 1})
             .sort([("any_stock", -1), ("store_count", -1)]))
-    rows = todo(urls, done, shard, shards, limit)
+    if only is not None:                                             # a hand-picked set, for checking a change before a full run
+        seen, rows = set(), []
+        for u in urls:
+            if u and safe_url(u) and cutout_key(u) in only and cutout_key(u) not in seen:
+                seen.add(cutout_key(u)); rows.append((cutout_key(u), u))
+    else:
+        rows = todo(urls, done, shard, shards, limit)
     with open(path, "w", encoding="utf-8") as f:
         f.writelines(f"{k} {u}\n" for k, u in rows)
     print({"todo": len(rows), "already_done": len(done)})
@@ -336,7 +351,8 @@ def main(argv=None):
     if a[:1] == ["list"]:
         shard, shards = (int(x) for x in a[a.index("--shard") + 1].split("/")) if "--shard" in a else (0, 1)
         limit = int(a[a.index("--limit") + 1]) if "--limit" in a else 1500
-        return cmd_list(a[1], shard, shards, limit)
+        only = set(open(a[a.index("--keys") + 1]).read().split()) if "--keys" in a else None
+        return cmd_list(a[1], shard, shards, limit, only)
     if a[:1] == ["make"]:
         return cmd_make(a[1], a[2])
     if a[:1] == ["merge"]:
