@@ -42,6 +42,7 @@ def ensure_indexes(db):
     p.create_index([("title", "text")])
     p.create_index([("category_slug", 1), ("any_stock", -1), ("store_count", -1), ("best_price", 1)])      # site: popular
     p.create_index([("category_slug", 1), ("any_stock", -1), ("best_price", 1)])                           # site: by price
+    p.create_index([("category_slug", 1), ("any_stock", -1), ("store_count", -1), ("best_price", -1)])     # site: default order
     p.create_index([("category_slug", 1), ("brand_slug", 1), ("any_stock", -1), ("store_count", -1)])      # site: brand filter
     p.create_index([("any_stock", -1), ("drop_pct", -1)])                                                  # site: deals
     p.create_index([("any_stock", -1), ("spread_pct", -1)])
