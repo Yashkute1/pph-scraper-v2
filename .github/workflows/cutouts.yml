@@ -1,7 +1,7 @@
 name: Cutouts
 
-# Removes the background from product photos and publishes the results to the `cutouts3` branch, where the website
-# reads them. (`cutouts2` and `cutouts` hold earlier versions; the website uses those only until a photo is redone.) Each run handles the next batch that has no cutout yet, so the backlog drains over a few runs and new
+# Removes the background from product photos and publishes the results to the `cutouts4` branch, where the website
+# reads them. (`cutouts3`, `cutouts2` and `cutouts` hold earlier versions; the website uses those only until a photo is redone.) Each run handles the next batch that has no cutout yet, so the backlog drains over a few runs and new
 # products are picked up afterwards.
 on:
   schedule:
@@ -41,7 +41,7 @@ jobs:
             requirements-cutouts.txt
       - run: pip install -r requirements.txt -r requirements-cutouts.txt
       - name: Fetch the list of finished cutouts
-        run: git fetch -q --depth 1 origin cutouts3 && git show FETCH_HEAD:manifest.txt > manifest.txt || echo "no manifest yet"
+        run: git fetch -q --depth 1 origin cutouts4 && git show FETCH_HEAD:manifest.txt > manifest.txt || echo "no manifest yet"
       - name: List photos that still need a cutout
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}          # this step only reads image addresses; it downloads nothing
@@ -64,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      contents: write                 # commits images to the `cutouts3` branch; this job receives no secrets
+      contents: write                 # commits images to the `cutouts4` branch; this job receives no secrets
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -79,8 +79,8 @@ jobs:
           cp tools/cutouts.py /tmp/cutouts.py
           git config user.name "pph-bot"
           git config user.email "pph-bot@users.noreply.github.com"
-          if git fetch -q origin cutouts3; then git checkout -q -B cutouts3 FETCH_HEAD; else git checkout -q --orphan cutouts3 && git rm -rfq . ; fi
+          if git fetch -q origin cutouts4; then git checkout -q -B cutouts4 FETCH_HEAD; else git checkout -q --orphan cutouts4 && git rm -rfq . ; fi
           python /tmp/cutouts.py merge . /tmp/cut/cut-*
           git add -A
           git commit -qm "cutouts: run ${{ github.run_number }}" || exit 0
-          git push -q origin cutouts3
+          git push -q origin cutouts4
