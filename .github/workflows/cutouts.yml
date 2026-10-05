@@ -6,6 +6,9 @@ name: Cutouts
 on:
   schedule:
     - cron: '47 2,8,14,20 * * *'
+  workflow_run:                      # GitHub often delays or drops timed runs, so every finished price run also starts one
+    workflows: [Scrape]
+    types: [completed]
   workflow_dispatch:
   push:
     branches: ['cutouts-run/**']
