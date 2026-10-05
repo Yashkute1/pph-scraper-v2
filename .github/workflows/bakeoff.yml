@@ -1,0 +1,30 @@
+name: Bakeoff
+on:
+  push:
+    branches: ['bakeoff/**']
+permissions:
+  contents: read
+jobs:
+  bake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        model: [birefnet-general, birefnet-general-lite, birefnet-massive, birefnet-hrsod, birefnet-dis]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt -r requirements-cutouts.txt
+      - run: nproc && free -g
+      - run: python -m bake.run ${{ matrix.model }}
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: bake-${{ matrix.model }}
+          path: out/
+          retention-days: 2
