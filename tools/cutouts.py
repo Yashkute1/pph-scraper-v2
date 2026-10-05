@@ -198,7 +198,7 @@ def model_cut(rgb, model):
     return np.dstack([rgb, (model * 255).round()]).astype(np.uint8)
 
 
-def cut_photo(im, mask_of):
+def cut_photo(im, mask_of, debug=None):
     """PIL image in, RGBA PIL image out, or None when no trustworthy cut exists. `mask_of(rgb_image)` returns an L image."""
     import numpy as np
     from PIL import Image
@@ -212,7 +212,11 @@ def cut_photo(im, mask_of):
     im = im.convert("RGB")
     im.thumbnail((WORK_SIDE, WORK_SIDE), Image.LANCZOS)
     rgb = np.asarray(im)
-    model = np.asarray(mask_of(im).convert("L").resize(im.size), dtype=np.float32) / 255.0
+    raw = mask_of(im).convert("L").resize(im.size)
+    if debug:                                                        # keep what the model saw and said, to study a bad cut
+        im.save(debug + "_in.png")
+        raw.save(debug + "_m.png")
+    model = np.asarray(raw, dtype=np.float32) / 255.0
     col, plain = background(rgb)
     out = exact_cut(rgb, model, col) if plain else model_cut(rgb, model)
     if out is None:
@@ -326,7 +330,7 @@ def cmd_make(path, out):
             if data:
                 im = Image.open(io.BytesIO(data))
                 im.load()
-                rgba = cut_photo(im, mask_of)
+                rgba = cut_photo(im, mask_of, os.path.join(out, key) if os.environ.get("CUTOUT_DEBUG") else None)
                 if rgba is not None:
                     os.makedirs(os.path.join(out, key[:2]), exist_ok=True)
                     with open(os.path.join(out, key[:2], key + ".webp"), "wb") as f:

@@ -34,6 +34,8 @@ jobs:
           path: ~/.u2net
           key: rembg-birefnet-general-lite
       - name: Remove backgrounds
+        env:
+          CUTOUT_DEBUG: '1'                              # also keep each photo as the model saw it, and the model's answer
         run: python -m tools.cutouts make todo.txt out   # no secrets in this step
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
