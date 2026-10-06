@@ -46,7 +46,7 @@ jobs:
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}          # this step only reads image addresses; it downloads nothing
         run: python -m tools.cutouts list todo.txt --shard ${{ matrix.shard }}/16 --limit 500
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.u2net
           key: rembg-birefnet-general-lite
