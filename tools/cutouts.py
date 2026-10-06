@@ -28,6 +28,8 @@ MAX_SIDE = 640
 WORK_SIDE = 1024                           # photos are cut at this size, then reduced
 MODEL = "birefnet-general-lite"
 BUSY = 0.03                                # share of the removed area with detail in it, above which a scene is left whole
+MURKY = 0.25                               # half see-through area away from the outline, as a share of the product, that stops a cut
+PALE = 0.09                                # off-white lost from inside the outline, as a share of the product, that stops a cut
 DOUBT = 0.02                               # unclear see-through area, as a share of the product, that stops a cut
 WHOLE = {"games"}                         # box art fills the picture: these photos are shown whole, never cut
 MAX_BYTES = 8 * 1024 * 1024
@@ -190,6 +192,7 @@ def exact_cut(rgb, model, col):
     # one region, however many pieces its outline breaks into.)
     islands, count = ndimage.label(dist >= 40)
     minor = _extras(model, islands)
+    dropped = minor
     model = np.where(minor, 0.0, model)
     m = np.where(minor, 0.0, m)
     if count > 1:
@@ -197,6 +200,7 @@ def exact_cut(rgb, model, col):
         seen = ndimage.sum_labels(model > 0.5, islands, idx) / np.maximum(ndimage.sum_labels(np.ones_like(model), islands, idx), 1)
         stray = np.concatenate([[False], seen < 0.03])[islands]
         if stray.any() and not stray[dist >= 40].all():              # never drop everything
+            dropped = dropped | stray
             floor = np.where(_dilate(stray, 5), np.minimum(floor, m), floor)
     alpha = np.maximum(floor, m)
 
@@ -211,13 +215,47 @@ def exact_cut(rgb, model, col):
     unmixed = np.clip((diff * span).sum(axis=2) / np.maximum(power, 1.0), 0, 1)
     alpha = np.where(ok, unmixed, alpha)
 
-    alpha, doubt = _mend(alpha, dist, model)
-    if doubt > DOUBT:
+    alpha, doubt = _mend(alpha, dist, model, f.max(axis=2) - f.min(axis=2) - (col.max() - col.min()))
+    if doubt > DOUBT or _pale_loss(alpha, dist) > PALE:
         return None
+    # A large mass that is neither kept nor gone is not a shadow: it is a light grey part (a second box, a stand)
+    # that the model did not see, and it would be drawn as a dark smudge.
+    firm = alpha > 0.5
+    murky = (alpha > 0.12) & (alpha < 0.6) & ~_dilate(firm, 7) & ~_dilate(dropped, 9)
+    if os.environ.get("CUTOUT_TRACE"):
+        print("trace murky %.3f pale-loss %.3f doubt %.3f" % (murky.sum() / max(1.0, float(firm.sum())), _pale_loss(alpha, dist), doubt))
+    if murky.sum() > MURKY * firm.sum():
+        return None
+    inner = _erode(ndimage.binary_fill_holes(firm), 7)               # well inside the outline nothing is half see-through
+    alpha = np.where(inner & firm, 1.0, alpha)
 
     a = np.clip(alpha, 1e-3, 1)[..., None]
     fg = np.where(alpha[..., None] >= 0.999, f, np.clip(col + diff / a, 0, 255))      # take the background back out
     return np.dstack([fg, alpha * 255]).round().astype(np.uint8)
+
+
+def _pale_loss(alpha, dist):
+    """How much off-white there is among what was removed from within the product's outline, as a share of the product.
+
+    Backdrop seen through a gap is flat white. A lot of shaded white inside the outline means white panels or a white
+    box that the model did not see, and that the cut would show with pieces missing. (Soft shadows fall mostly
+    outside the outline, so they count for little.)"""
+    import numpy as np
+    from PIL import Image, ImageDraw
+    from scipy import ndimage
+    from scipy.spatial import ConvexHull, QhullError
+    solid = alpha > 0.5
+    pts = np.argwhere(solid & ~ndimage.binary_erosion(solid))
+    if len(pts) < 10:
+        return 0.0
+    try:
+        corners = pts[ConvexHull(pts).vertices]
+    except QhullError:
+        return 0.0
+    canvas = Image.new("L", (solid.shape[1], solid.shape[0]), 0)
+    ImageDraw.Draw(canvas).polygon([(int(x), int(y)) for y, x in corners], fill=1)
+    lost = (alpha < 0.3) & ~ndimage.binary_dilation(solid, iterations=3) & np.asarray(canvas).astype(bool)
+    return float((lost & (dist >= 6) & (dist < 60)).sum()) / float(solid.sum())
 
 
 def _four_sided(area):
@@ -252,7 +290,7 @@ def _four_sided(area):
     return bool(alike and max(turn) < 0.58)
 
 
-def _mend(alpha, dist, model):
+def _mend(alpha, dist, model, tint):
     """Decide what the background-coloured areas inside the product's outline are. Returns (alpha, doubt).
 
     White parts of a product on a white backdrop look like background, and the model misses them often (a white memory
@@ -291,6 +329,8 @@ def _mend(alpha, dist, model):
         flat = float((dist[box][probe] < 5).mean())
         seen = float((model[box][area] > 0.5).mean())
         shade = float(np.median(dist[box][probe]))
+        if float(np.median(tint[box][probe])) >= 12:                 # a pale colour, which no shadow on white is
+            shade = 0.0
         printed = False
         if enclosed and seen < 0.5:
             # Lettering on a box the model did not notice: solid on every side for some distance, and the model has
