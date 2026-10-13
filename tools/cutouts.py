@@ -471,16 +471,23 @@ def _download(url):
 
 
 def cmd_list(path, shard, shards, limit, only=None, match=None):
-    from pymongo import MongoClient
-
-    from pph import DB_NAME
-    uri = os.environ.get("MONGO_URI")
-    if not uri:
-        raise SystemExit("MONGO_URI is not set")
-    db = MongoClient(uri, serverSelectionTimeoutMS=20000)[DB_NAME]
     done = parse_manifest(open("manifest.txt").read()) if os.path.exists("manifest.txt") else {}
-    docs = list(db.products_v2.find({"image": {"$nin": ["", None]}}, {"image": 1, "category_slug": 1, "title": 1})
-                .sort([("any_stock", -1), ("store_count", -1)]))
+    if os.environ.get("MYSQL_URL"):
+        from pph import sql_db
+        db = sql_db.connect(os.environ["MYSQL_URL"])
+        with db.cursor() as cur:
+            cur.execute("SELECT image, category_slug, title FROM products WHERE image <> '' ORDER BY any_stock DESC, store_count DESC")
+            docs = [{"image": r[0], "category_slug": r[1], "title": r[2]} for r in cur.fetchall()]
+    else:
+        from pymongo import MongoClient
+
+        from pph import DB_NAME
+        uri = os.environ.get("MONGO_URI")
+        if not uri:
+            raise SystemExit("Neither MYSQL_URL nor MONGO_URI is set")
+        db = MongoClient(uri, serverSelectionTimeoutMS=20000)[DB_NAME]
+        docs = list(db.products_v2.find({"image": {"$nin": ["", None]}}, {"image": 1, "category_slug": 1, "title": 1})
+                    .sort([("any_stock", -1), ("store_count", -1)]))
     whole = {cutout_key(d["image"]) for d in docs if d.get("category_slug") in WHOLE and safe_url(d["image"])}
     urls = (d.get("image") for d in docs)
     if only is not None:                                             # a hand-picked set, for checking a change before a full run
