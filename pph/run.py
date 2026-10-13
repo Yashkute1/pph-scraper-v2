@@ -33,9 +33,14 @@ def _utcnow():
 
 
 def _connect():
+    """MySQL (Hostinger) when MYSQL_URL is set, otherwise MongoDB from MONGO_URI."""
+    url = os.environ.get("MYSQL_URL")
+    if url:
+        from . import sql_db
+        return sql_db.connect(url)
     uri = os.environ.get("MONGO_URI")
     if not uri:
-        raise SystemExit("MONGO_URI is not set")
+        raise SystemExit("Neither MYSQL_URL nor MONGO_URI is set")
     from pymongo import MongoClient
     return MongoClient(uri, serverSelectionTimeoutMS=20000, retryWrites=True)[DB_NAME]
 
@@ -49,6 +54,14 @@ def _report(name, doc):
             f.write(f"| {doc['store']} | {doc['status']} | {doc['fetched']} | {doc['written']} | "
                     f"{doc['previous_count']} | {doc.get('seconds', '')} | {doc.get('note', '')} |\n")
     print(json.dumps(doc, default=str))
+
+
+def _dbmod(db):
+    """The module that knows how to talk to this kind of connection."""
+    if type(db).__module__.startswith("pymysql"):
+        from . import sql_db
+        return sql_db
+    return store_db
 
 
 def scrape(store, dry_run=False, max_pages=None, time_budget=None, db=None, now=None, fetcher=None, clock=time.monotonic):
@@ -90,7 +103,7 @@ def scrape(store, dry_run=False, max_pages=None, time_budget=None, db=None, now=
     else:
         try:
             db = db if db is not None else _connect()
-            run = store_db.write_store(db, store, offers, now or _utcnow(), blocked, started=started, note=note, complete=complete)
+            run = _dbmod(db).write_store(db, store, offers, now or _utcnow(), blocked, started=started, note=note, complete=complete)
         except SystemExit:
             raise
         except Exception as e:
@@ -105,8 +118,9 @@ def scrape(store, dry_run=False, max_pages=None, time_budget=None, db=None, now=
 
 def rollup_cmd(db=None, now=None):
     db = db if db is not None else _connect()
-    store_db.ensure_indexes(db)
-    out = store_db.write_rollup(db, now or _utcnow())
+    mod = _dbmod(db)
+    mod.ensure_indexes(db)
+    out = mod.write_rollup(db, now or _utcnow())
     _report("rollup", out)
     return 0, out
 
@@ -114,7 +128,7 @@ def rollup_cmd(db=None, now=None):
 def health_cmd(hours, db=None, now=None, stores=None):
     """Exit 1 when a store has had no good run for `hours`: the one situation worth an alert."""
     db = db if db is not None else _connect()
-    stale = store_db.stale_stores(db, list(stores or STORES), now or _utcnow(), hours)
+    stale = _dbmod(db).stale_stores(db, list(stores or STORES), now or _utcnow(), hours)
     out = {"stale": stale, "hours": hours}
     _report("health", out)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
