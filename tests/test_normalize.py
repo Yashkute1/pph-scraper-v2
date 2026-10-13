@@ -2,6 +2,9 @@ import pytest
 from pph.normalize import normalize, parse_price, brand_of, canonical_url
 
 
+LATE = {"EVM", "Consistent", "Simmtronics", "Frontech", "Zebronics"}
+
+
 def test_golden_parity(titles, golden):
     bad = []
     for row, want in zip(titles, golden):
@@ -12,6 +15,8 @@ def test_golden_parity(titles, golden):
         if got is None:
             bad.append((row["title"], "wrongly rejected", want["category"])); continue
         for k in ("title", "price", "mrp", "brand", "category", "model_key", "group_id", "specs"):
+            # The one intended change since the port: a few "Generic" parts now name their brand (group id unchanged).
+            if k == "brand" and want[k] == "Generic" and got[k] in LATE: continue
             if got[k] != want[k]: bad.append((row["title"], k, got[k], want[k]))
     assert not bad, f"{len(bad)} mismatches, first 15: {bad[:15]}"
 
@@ -55,3 +60,10 @@ def test_output_shape():
     n = normalize({"title": "AMD Ryzen 5 5600 Processor", "price": "₹12,999", "mrp": "₹16,999", "url": "https://a.test/p?x=1", "image": "i"}, "elitehubs")
     assert set(n) == {"store", "url", "title", "price", "mrp", "in_stock", "image", "brand", "category", "model_key", "group_id", "specs"}
     assert (n["store"], n["price"], n["mrp"], n["category"], n["in_stock"], n["url"]) == ("elitehubs", 12999, 16999, "Processor/CPU", True, "https://a.test/p")
+
+
+def test_late_brand_names_the_part_but_keeps_the_group_id():
+    from pph.normalize import normalize
+    o = normalize({"title": "EVM 2TB M.2 NVMe Internal SSD", "price": "29900", "url": "https://x.test/a"}, "mdcomputers")
+    assert o["brand"] == "EVM"
+    assert "evm" not in o["group_id"]

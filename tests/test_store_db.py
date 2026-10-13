@@ -168,3 +168,10 @@ def test_indexes_for_the_site(db):
                  (("category_slug", 1), ("brand_slug", 1), ("any_stock", -1), ("store_count", -1)),
                  (("any_stock", -1), ("drop_pct", -1)), (("any_stock", -1), ("spread_pct", -1))]:
         assert want in keys, want
+
+
+def test_history_skips_out_of_stock_prices():
+    from pph.store_db import _history
+    h = _history([{"d": "2026-10-01", "p": 100}], "2026-10-02", 80, in_stock=False)
+    assert h == [{"d": "2026-10-01", "p": 100}]
+    assert _history(h, "2026-10-02", 90)[-1] == {"d": "2026-10-02", "p": 90}

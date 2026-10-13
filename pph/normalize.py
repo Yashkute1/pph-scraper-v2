@@ -332,6 +332,14 @@ def canonical_url(url):
     return out
 
 
+_LATE_BRANDS = (("EVM", "EVM"), ("CONSISTENT", "Consistent"), ("CONSISTEN", "Consistent"), ("SIMMTRONICS", "Simmtronics"), ("FRONTECH", "Frontech"), ("ZEBRONICS", "Zebronics"))
+
+
+def _late_brand(title):
+    t = " " + re.sub(r"[^A-Z0-9]+", " ", str(title or "").upper()) + " "
+    return next((name for key, name in _LATE_BRANDS if " " + key + " " in t), "")
+
+
 def _canon_brand(raw_brand, title):
     if raw_brand and str(raw_brand).strip():
         rb = str(raw_brand).strip()
@@ -366,10 +374,14 @@ def normalize(raw, store):
     elif category == "Nintendo": brand = "Nintendo"
     brand = brand or "Generic"
     mk = model_key(title)
+    gid = group_id(brand, mk, title, category)
+    # Brands added after launch name the part on the site but stay out of the group id, so existing part addresses keep working.
+    if brand == "Generic":
+        brand = _late_brand(title) or brand
     in_stock = raw.get("in_stock")
     return {
         "store": store, "url": canonical_url(url), "title": title, "price": price, "mrp": mrp,
         "in_stock": True if in_stock is None else bool(in_stock), "image": raw.get("image") or "",
         "brand": brand, "category": category, "model_key": mk,
-        "group_id": group_id(brand, mk, title, category), "specs": specs_of(title, category),
+        "group_id": gid, "specs": specs_of(title, category),
     }

@@ -54,7 +54,11 @@ def _bulk(col, ops):
         col.bulk_write(ops[i:i + BATCH], ordered=False)
 
 
-def _history(old, day, price):
+def _history(old, day, price, in_stock=True):
+    """One price per day. Only in-stock prices are recorded: an out-of-stock listing's price is not one anyone can pay,
+    and it must not become the part's "lowest price" on the site."""
+    if not in_stock:
+        return list(old or [])[-HISTORY_DAYS:]
     h = [x for x in (old or []) if x.get("d") != day]
     h.append({"d": day, "p": price})
     return h[-HISTORY_DAYS:]
@@ -83,7 +87,7 @@ def write_store(db, store, offers, now, blocked, started=None, note="", complete
         ops = []
         for oid, o in unique.items():
             doc = dict(o, last_seen=now, missed_runs=0,
-                       history=_history(existing.get(oid, {}).get("history"), day, o["price"]))
+                       history=_history(existing.get(oid, {}).get("history"), day, o["price"], o.get("in_stock", True)))
             ops.append(UpdateOne({"_id": oid}, {"$set": doc, "$setOnInsert": {"first_seen": now}}, upsert=True))
         _bulk(db.offers, ops)
         run["written"] = len(ops)
