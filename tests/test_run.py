@@ -59,6 +59,13 @@ def test_fatal_block_is_reported_and_saves_what_was_fetched(env):
     assert (code, run["status"], run["written"]) == (3, "blocked", 2)     # 3 = refused, retried elsewhere, not a failure
 
 
+def test_store_that_does_not_answer_is_retried_not_failed(env):
+    db = mongomock.MongoClient().pph_site
+    code, run = go([], db, error=TimeoutError("Timeout"))
+    assert (code, run["status"], run["written"]) == (3, "blocked", 0)
+    assert "did not answer" in run["note"]
+
+
 def test_empty_listing_is_failed(env):
     db = mongomock.MongoClient().pph_site
     code, run = go([], db, error=EmptyListingError("u"))

@@ -79,6 +79,10 @@ def scrape(store, dry_run=False, max_pages=None, time_budget=None, db=None, now=
         complete, note = False, "store stopped responding part-way"
     except Exception as e:                      # keep whatever was fetched; never crash the job silently
         complete, note = False, safe_error(e)
+        if not offers:
+            # The store did not answer at all (timeouts, dropped connections). Like a refusal: nothing is written,
+            # old prices stay, and the store is tried again from another machine instead of failing the run.
+            blocked, note = True, "store did not answer: " + note
     seconds = int(clock() - t0)
     if dry_run:
         run = {"store": store, "started": started, "status": "dry-run", "fetched": len({o["url"] for o in offers}),
