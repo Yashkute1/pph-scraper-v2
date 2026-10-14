@@ -45,7 +45,7 @@ jobs:
         run: scrapling install
       - name: Scrape ${{ matrix.store }}
         env:
-          MONGO_URI: ${{ secrets.MONGO_URI }}
+          MYSQL_URL: ${{ secrets.MYSQL_URL }}
         run: |
           echo "| store | status | fetched | written | previous | seconds | note |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|---|---|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
@@ -115,7 +115,7 @@ jobs:
       - run: sleep 600
       - name: Scrape ${{ matrix.store }} again
         env:
-          MONGO_URI: ${{ secrets.MONGO_URI }}
+          MYSQL_URL: ${{ secrets.MYSQL_URL }}
         run: |
           echo "| store | status | fetched | written | previous | seconds | note |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|---|---|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
@@ -147,13 +147,13 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - env:
-          MONGO_URI: ${{ secrets.MONGO_URI }}
+          MYSQL_URL: ${{ secrets.MYSQL_URL }}
         run: python -m pph.run rollup
       - name: Fail only if a store has had no good run for a day
         # One refusal is normal and is retried. A store that stays stale for 26 hours needs a person to look.
         if: always()
         env:
-          MONGO_URI: ${{ secrets.MONGO_URI }}
+          MYSQL_URL: ${{ secrets.MYSQL_URL }}
         run: python -m pph.run health --hours 26
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

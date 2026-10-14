@@ -28,7 +28,7 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Roll up and export
         env:
-          MONGO_URI: ${{ secrets.MONGO_URI }}
+          MYSQL_URL: ${{ secrets.MYSQL_URL }}
         run: |
           python -m pph.run rollup
           python -m tools.export_sample sample.json
