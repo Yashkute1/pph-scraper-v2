@@ -32,8 +32,10 @@ def test_store_fixture_parses(store):
     assert sum(1 for o in offers if o["image"].startswith("https://")) >= 0.9 * len(offers)
     assert len({o["url"] for o in offers}) == len(offers)
     kept = [n for n in (normalize(o, store) for o in offers) if n]
-    # real PC products survive the cleaning rules; marketplaces mix in junk (mobile VR boxes etc.) that must not
-    assert len(kept) >= (0.6 if store == "flipkart" else 0.8) * len(offers)
+    # real PC products survive the cleaning rules; marketplaces mix in junk (mobile VR boxes, gimbals and drones sold
+    # under "graphics card" with a made-up spec sheet) that must not. This Flipkart page is about half junk.
+    assert len(kept) >= (0.5 if store == "flipkart" else 0.8) * len(offers)
+    assert not any(n["category"] == "Graphics Card" and ("gimbal" in n["title"].lower() or "drone" in n["title"].lower()) for n in kept)
 
 
 def test_amazon_urls_are_canonical_dp_links():

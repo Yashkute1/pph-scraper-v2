@@ -69,8 +69,139 @@ def buildScore(t):
     return n
 
 
-# fmt: off
+
+# Flipkart appends its own spec sheet to some titles: "... DDR2 2 GB NVIDIA Chipset 0 bit 0 MHz Graphics Card" or
+# "... 2 GB Servers Black SATA Internal Solid State Drive (SSD)". Sellers file drones, VR boxes and gimbals there, so
+# the tail says nothing about what the item is. It is cut off and the head decides.
+_FK_GPU = re.compile(r"\s+(?:g?ddr\d\w*\s+)?[\d.]+\s*[gm]b\s+[\w/&-]+(?:\s+[\w/&-]+)?\s+chipset\s+\d+\s*bit\s+[\d.]+\s*mhz\s+graphics card\b.*$")
+_FK_SSD = re.compile(r"\s+[\d.]+\s*(?:gb|tb)\s+servers?\s+\w+\s+(?:sata|m\.2|pcie|nvme)\s+internal solid state drive\b.*$")
+_JUNK_HEAD = (r"\bdrones?\b|\bgimbals?\b|stabili[sz]er|\bairplane\b|fighter jet|\brc\b|remote control (car|plane|toy)|\btoy\b|"
+              r"\bquadcopter\b|selfie stick|\btripod\b|phone holder|\bfpv\b")
+_RAM_SIZE = r"\b\d{1,3}\s?gb\s?\(\d+\s?x\s?\d+\s?gb\)|\b\d{1,3}\s?gb\b.{0,14}\b(ram|ddr\d|memory)\b|\b(ram|ddr\d)\b.{0,6}\b\d{1,3}\s?gb\b|\b\d{1,3}\s?gb\s?\/|\(\s?\d{1,3}\s?gb\b"
+_DISK_SIZE = r"\b\d+\s?(gb|tb)\b.{0,16}\b(ssd|hdd|nvme|m\.2|hard dis[kc]|storage)\b|\b(ssd|hdd|nvme)\b.{0,6}\b\d+\s?(gb|tb)\b"
+_CPU = (r"\b(ryzen\s?[3579]|core\s?2\s?(duo|quad)|\bdual core\b|\bquad core\b|\b(processor|cpu)\s+i[3579]\b|core[\s-]?(\(tm\)|™)?\s?i[3579]|\ba(4|6|8|10|12)[- ]\d{4}|core\s?ultra|\bultra\s?[3579]\s?\d{3}|xeon|threadripper|pentium|celeron|athlon|"
+        r"\bc?i[3579][- ]?\d{3,5}[a-z]{0,3}\b|\bi[3579]\s?\d{1,2}(th|nd|rd|st)\s?gen)")
+_SYSTEM = (r"gaming (pc|computer|desktop|rig)|desktop (pc|computer|tower|cpu)|\bpc build\b|custom pc|computer system|tower pc|mini pc|"
+           r"micro pc|\bnuc\b|thinkcentre|optiplex|prodesk|elitedesk|veriton|all[- ]?in[- ]?one|\baio pc\b|\bpc\b.{0,12}\b(kit|combo|setup)\b|"
+           r"combo kit|motherboard combo|\bcombo\b.{0,40}(core|i[3579]|ryzen|processor|cpu)|(core|i[3579]|ryzen|processor|cpu).{0,40}\bcombo\b|"
+           r"assembled|pre-?assembled|pre-?built|full (pc )?setup|complete (pc|computer|setup|system)|workstation pc")
+_PART_HEAD = (r"graphics card|graphic card|\bgpu\b|\bssd\b|\bnvme\b|\bram\b|memory|power supply|\bpsu\b|\bsmps\b|cabinet|\bcase\b|chassis|"
+              r"cooler|\bfans?\b|monitor|keyboard|mouse|\bups\b|speaker|headset|webcam|hard (disk|drive)|\bhdd\b|motherboard")
+_LAPTOP = r"\b(laptops?|notebooks?|chromebook|macbook)\b"
+_MOBILE_CPU = (r"\br[3579]-\d{3}\b|\b[12]\d{2}(hx|h|u|v)\b|\b(c?i[3579][- ]?)?1[0-4]\d{2,3}\s?(hx|hs|h|u|p)\b|\bc?i[3579]-?\d{4,5}(hx|hs|h|u|p)\b|ryzen\s(ai\s)?[3579]\s\d{3}(?![\d/])\b|\b\d{4}h[qk]\b|\b(r[3579][- ]?)?[5-9]\d{3}(hx|hs|h|u)\b|\bultra\s?[3579][- ]?\d{3}(hx|h|v|u)\b|"
+               r"\bcore\s?[3579][- ]?\d{3}[uh]\b|\b(ryzen ai|ai\s?[3579])\s?\d{3}\b|\b\d{3}hx\b")
+
+
+_LAPTOP_MODELS = (r"\b(vivobook|zenbook|ideapad|thinkpad|thinkbook|yoga|legion|loq|nitro\s?v?|predator|helios|tuf (gaming )?[af]\d{2}|"
+                  r"rog (zephyrus|strix g|flow)|strix g\d{2}|victus|omen (transcend|\d{2})|inspiron|\bxps\b|vostro|latitude|alienware m|aspire|swift|"
+                  r"katana|cyborg|modern\s?\d{2}|prestige|stealth|raider|titan|vector|crosshair|sword|bravo|venture|thin (gf|a)\d{2}|gf63|gp\d{2}|gs\d{2}|"
+                  r"galaxy book|macbook|surface (pro|laptop)|gram|zbook|probook|elitebook|envy|spectre|pavilion (plus|\d{2}|x360)|chromebook|"
+                  r"dell g\d{2}|\bg1[56]\b|expertbook|creator|\bv1[456]\b)\b")
+
+
+def _system(t):
+    """A whole computer or a board + CPU + memory kit, not a single part."""
+    if (_s(_LAPTOP, t) or _s(_LAPTOP_MODELS, t)) and not _s(r"all[- ]?in[- ]?one|\baio\b|desktop|tower|mini pc|\bnuc\b", t):
+        return False
+    if _s(_PART_HEAD, t[:40]) and not _s(_CPU, t[:40]) and not _s(r"gaming pc|desktop pc|custom pc|mini pc|\bcombo\b|\bkit\b", t[:40]):
+        return False
+    words = _s(_SYSTEM, t)
+    ram, disk, cpu = _s(_RAM_SIZE, t), _s(_DISK_SIZE, t), _s(_CPU, t)
+    # a part that says which computers it fits ("Desktop PC RAM", "Upgrade for Laptop, Desktop PC", "All in One PC's")
+    if not cpu and _s(r"solid state|internal ssd|hard dis[kc] drive|\bu?dimm\b|so-?dimm|\b(pc|desktop|computer)\s+(ram|memory)\b|"
+                      r"for (gaming |desktop )?(pc|computer|desktop|laptop)|all in one pc'?s|pc\d-\d{4,5}", t):
+        return False
+    kit = _s(r"motherboard|mainboard|\b[bhzq]\d{2,3}m?\b", t) and cpu and ram and _s(r"\bcombo\b|\bkit\b|assembled|\+|bundle", t)
+    if _s(r"pre-?\s?built|custom pc|\bpc build\b|gaming pc|desktop pc|computer system", t) and ram and disk:
+        return True
+    whole = cpu and ram and (disk or _s(r"\binch screen\b|\d{2}\s?inch (screen|monitor|led)", t)) and _s(r"win(dows)?\s?1[01]|\bdos\b|ubuntu|linux|wi-?fi|\bhdmi\b|graphics|keyboard|\brtx\s?a?\d{4}|\brx\s?\d{4}|\bgtx\s?\d{3,4}|\b\d{4}\s?xt\b", t)
+    lead = _s(r"gaming (pc|desktop|computer)|desktop (pc|computer|cpu|tower)|custom pc|mini pc|computer", t[:40])
+    return bool(kit or (words and (ram or disk) and (cpu or lead)) or (words and cpu and lead) or whole)
+
+
 def type_of(title):
+    t = ' ' + _WS.sub(' ', _DOTS.sub(' ', str(title).lower())) + ' '
+    if _s(r"fidget|stress relief|(keyboard|switch|keycap|toy)\s?key ?chain|key ?chain\s?(toy|fidget)", t) and not _s(r"pen ?drive|flash drive|usb drive|memory stick", t):
+        return 'Other'
+    fk = _FK_GPU.search(t) or _FK_SSD.search(t)
+    if fk:
+        head = t[:fk.start()] + ' '
+        if _s(r"\bvr\b|virtual reality|3d glasses", head): return 'Gaming Accessories'
+        if _s(_JUNK_HEAD, head): return 'Other'
+        gpu = r"\b(rtx|gtx|gt|rx|arc|geforce|radeon|quadro|vga|gpu|graphics|zotac|zt-|msi|asus|gigabyte|sapphire|powercolor|xfx|inno3d|palit|galax|colorful|zebronics|nextron|asrock|pny|evga|maxsun|yeston|biostar)\b|\b(gt|rx|gtx|rtx)?\s?-?\d{3,4}\b|\bgv-|dual-"
+        if _s(r"(graphics?|gpu|card)\s+(cooler|fan)|cooling fan", head): return 'Fans & Cooling'
+        if _s(r"graphics? card|\b(gt|gtx|rtx|rx)\s?-?\d{3,4}\b", head) and not _s(r"\bfan\b|cooler|cooling", head[:30]) and not _s(r"stand|holder|bracket|support|riser", head): return 'Graphics Card'
+        if _s(r"\bfan\b|cooler|cooling", head): return 'Fans & Cooling'
+        if _s(r"riser|splitter|expansion card|extender|\bstand\b|holder|bracket|adapter|converter|\bm\.2\b|nvme|\bssd\b", head): return 'Accessories'
+        if fk.re is _FK_GPU:
+            return 'Graphics Card' if _s(gpu, head) and not _s(r"\be\d{2,3}\b|stylus|\bpen\b", head) else 'Other'
+        return _rules_type(head)
+    if _s(r"diagnostic (card|tool|tester|analy[sz]er)|post card|debug card|\btester\b|analy[sz]er", t) and not _s(_CPU, t) and not _s(r"\bups\b|\bva\b", t): return 'Accessories'
+    if _s(r"(mid|full|mini|micro|super)[- ]?tower|pc case|computer case|gaming case|atx case|\bcabinet\b(?!\s+(cooler|compatible|stand|support|fan))|\bchassis\b", t[:70]) \
+            and not _s(r"cabinet (cooler|compatible)|display cabinet|\bheat ?sinks?\b|enclosure", t) \
+            and not _s(r"cabinet (fans?|cooler|cooling|lock|handle|stand)|\bfans?\b.{0,20}cabinet|carrying|backpack|\bbag\b|cover|\bstand\b|clean|tv cabinet|kitchen|keyboard|mouse|speaker|\bups\b|bracket|holder|mount\b|riser", t[:60]) \
+            and not _s(r"^\W*(\w+\W+){0,2}(cpu |case |cabinet )?(fans?|cooler)\b|\b(case|cabinet|pc|computer|chassis)\s+fans?\b|cooling fans?\b.{0,30}\b(for|pc)\b|\bfans?\b.{0,25}\bfor\b.{0,15}(pc |computer )?(case|cabinet)|\bmat\b|mouse ?pad|air duster|\bpsu\b|power supply|\bsmps\b", t) \
+            and not _s(_CPU, t) and not _s(_RAM_SIZE, t):
+        return 'PC Case/Chassis'
+    if _s(r"thermal (conductive|paste|compound|grease)|grease paste|conductive grease|heat ?sink (paste|compound)", t[:60]) \
+            and not _s(r"^\W*(\w+\W+){0,3}(cpu |air |liquid )?(cooler|fan)\b|processor|\bcpu\b.{0,6}(with|\+)|liquid|\baio\b", t[:40]):
+        return 'Thermal Paste'
+    if _s(r"\b\d{3,4}\s?w\b.{0,40}(80\s?\+|80 plus|bronze|gold|platinum|titanium|modular|\bsmps\b|\bpsu\b|power supply)|(80\s?\+|80 plus)\s?(bronze|gold|platinum|titanium).{0,40}\b\d{3,4}\s?w\b", t) \
+            and not _s(r"cabinet|\bcase\b|chassis|\bups\b|\bcable\b|tester|\b\d{3,4}\s?va\b|gaming pc|desktop pc|\bnas\b|\bbay\b|rack|graphics card|motherboard", t) and not _s(_CPU, t):
+        return 'Power Supply'
+    if _s(r"^.{0,50}(stock fan|cpu fan|cooling fan|heat ?sink)", t) and not _s(r"graphics? card|\bssd\b|\bnvme\b|\bm\.2\b|solid state|\bddr\d|dimm|\bram\b|paste|compound|grease|ps[345]|playstation|xbox", t) \
+            and not (_s(_CPU, t) and _s(_RAM_SIZE, t)):
+        return 'Fans & Cooling'
+    if _s(r"\b(ps[345]|playstation|xbox|nintendo)\b", t) and _s(r"cooling fans?|cooler|cooling (station|stand|system|dock)", t) \
+            and not _s(r"^\W*sony|game (cd|disc)|games? cd|computer|\bpc\b|\bdvr\b|router|receiver|tv box|av cabinet", t):
+        return 'Gaming Accessories'
+    if _s(r"smart (led |qled |oled |google |android )?tv\b|\btelevision\b|\b(qled|oled|led) tv\b", t) and not _s(r"monitor|tv stick|tv box|console|nintendo|playstation|xbox|remote|projector", t):
+        return 'Other'
+    if _s(r"multifunction (printer|laser|inkjet)?|imageclass|laserjet|inkjet|ink tank|\bprinter\b", t) and not _s(r"3d printed|printer cable|\bfor\b.{0,10}printer", t): return 'Other'
+    if _s(r"live streamer|streaming kit|stream(ing)? deck", t) and not _s(r"\bmic\b|microphone|headset|webcam|\bcam\b", t): return 'Gaming Accessories'
+    if _s(r"\b(1[24]0|[89]0|200)\s?mm\b.{0,40}\b(argb|rgb|pwm|fans?)\b", t[:70]) and not _s(_CPU, t) and not _s(r"radiator|aio|liquid|cabinet|\bcase\b|tower|cooler", t[:50]):
+        return 'Fans & Cooling'
+    if _s(r"\bdock(ing)?\b.{0,30}(usb|type-?c|display|hdmi|station)|(usb|type-?c|thunderbolt).{0,30}\bdock(ing)?\b", t) and not _s(r"ps[345]|playstation|xbox|nintendo|controller|\bssd\b|enclosure|laptop\b.{0,10}(with|\+)|monitor|\binch\b", t):
+        return 'Accessories'
+    # Flipkart's headphone spec tail ("... RTL Chipset Bluetooth & Wired")
+    if _s(r"\b\w+ chipset bluetooth|bluetooth (&|and) wired\s*$", t) and not _s(r"speaker|soundbar", t): return 'Headset'
+    # Flipkart labels drives "... Internal Solid State Drive (SSD)" whatever their compatibility list says (NAS, servers)
+    if _s(r"internal solid state drive \(ssd\)", t) and not _s(_CPU, t) and not _s(r"enclosure|caddy|adapter|heat ?sink|cooling pad|reader|\bdock", t): return 'SSD'
+    # drives that only mention the PCs they fit ("... Hard Disk Drive ... All in One PC's, Desktop, Laptop")
+    if _s(r"hard dis[kc] drive|\(hdd\)|\binternal hdd\b|\bexternal hdd\b", t) and not _s(_CPU, t) and not _s(r"\bssd\b.{0,20}(capacity|/)|win(dows)?\s?1[01]", t):
+        return 'Accessories' if _s(r"caddy|enclosure|\bcase\b|docking|dock\b|cover only|adapter|converter", t) else 'HDD'
+    # all-in-one PCs before laptops: a screen and a laptop-class CPU do not make a laptop
+    if _s(r"all[- ]?in[- ]?one|\baio\b.{0,6}(pc|desktop|computer)|\b(pavilion|ideacentre|inspiron) aio\b", t) and _s(_CPU, t) \
+            and not _s(r"cooler|liquid|water|printer|keyboard|mouse|speaker", t):
+        return 'Desktop PC'
+    # laptops named only by a mobile CPU code and their spec sheet ("DELL G15 ... 12500H - (16 GB/512 GB SSD/Windows 11 ...")
+    if _s(_MOBILE_CPU, t) and (_s(_RAM_SIZE, t) or _s(_DISK_SIZE, t)) and (_s(r"win(dows)?\s?1[01]|\bdos\b|\d{2}(\.\d)?\s?(\"|inch|cm)|\bfhd\b|\bwuxga\b|\bips\b|\bhz\b|laptop", t) or _s(_LAPTOP_MODELS, t)) \
+            and not _s(r"mini pc|\bnuc\b|desktop|tower|all[- ]?in[- ]?one|\baio\b|monitor|\bbarebone|motherboard|mainboard", t):
+        return 'Gaming Laptop'
+    # a laptop listing with its memory, storage and Windows ("Surface Pro ... (16 GB/512 GB SSD/Windows 11 Home) ... 2 in 1 Laptop")
+    if (_s(_LAPTOP, t) or _s(_LAPTOP_MODELS + r"|surface pro|surface laptop", t)) and _s(_RAM_SIZE, t) and _s(_DISK_SIZE, t) \
+            and _s(r"win(dows)?\s?1[01]|\bdos\b|macos|chrome ?os", t) and not _s(r"all[- ]?in[- ]?one|\baio\b|desktop|tower|mini pc|\bnuc\b|monitor", t):
+        return 'Gaming Laptop'
+    if _system(t):
+        return 'Desktop PC'
+    # memory "for laptop" and portable screens are not laptops
+    if _s(r"\bddr[2345]l?\b|so-?dimm|\b\d+\s?gb\b.{0,20}\bram\b", t) and _s(_LAPTOP, t) and not _s(_CPU, t) \
+            and not _s(r"win(dows)?\s?1[01]|\bssd\b|\binch\b|\bhz\b|motherboard|mainboard|mouse ?pad", t):
+        return 'Memory/RAM'
+    if _s(r"portable (gaming |touch ?screen |oled )?monitor|external monitor|travel monitor|monitor for laptop|laptop (screen )?monitor|second screen", t) \
+            and not _s(_CPU, t) and not _s(r"\barm\b|mount|bracket|light ?bar|stand for|cleaner|privacy|cable\b|adapter|webcam", t):
+        return 'Monitor'
+    # a CPU named up front and called a processor is a processor, whatever board or chipset it says it fits
+    if _s(_CPU, t[:48]) and _s(r"processor|\bcpu\b|\bapu\b", t) and not _s(_RAM_SIZE, t) \
+            and not _s(r"\bcombo\b|\bkit\b|bundle|laptop|notebook|\binch\b|win(dows)?\s?1[01]|\bfhd\b|series (cpu|processor)|\b[abxzh]\d{3}[a-z]?\b.{0,30}(socket|series)", t) and not _s(_LAPTOP_MODELS, t) and not _s(r"motherboard|mainboard", t[:40]) \
+            and not (_s(r"cooler|liquid|\baio\b|\bfan\b|heat ?sink", t) and not _s(r"(cooler|fan)[^,)]{0,15}not included|without (a )?(cooler|fan)", t)):
+        return 'Processor/CPU'
+    return _rules_type(title)
+
+
+
+# fmt: off
+def _rules_type(title):
     t = ' ' + _WS.sub(' ', _DOTS.sub(' ', str(title).lower())) + ' '
     # mousepads FIRST (before the accessory list) so they get their own tab instead
     # of drowning in Accessories.
@@ -88,7 +219,10 @@ def type_of(title):
         or (_s(r"""webcam|web ?cam""",t) and _s(r"""1080|720|4k|auto ?focus|sensor|fps|\bmic\b""",t))
         or (_s(r"""\bmonitor\b""",t) and _s(r"""\d{2,3}\s?hz|fhd|qhd|uhd|ips|\d{3,4}x\d{3,4}""",t))
         or ((_s(r"""\b(laptop|notebook)\b""",t) or _s(r"""\bc?i[3579]-?\d{4,5}(hx|hs|h|u|k|kf)?\b""",t) or _s(r"""ryzen\s?[3579]\s?\d{4}|\br[3579]-?\d{4}u?\b""",t)) and _s(r"""\bssd\b|\bram\b|win\s?1[01]|\d+\s?gb\b|\brtx\b|\bgtx\b|\bhx\b""",t))
-        or (_s(r"""\b\d{3,4}\s?x\s?\d{3,4}\b""",t) and _s(r"""\d{2,3}\s?hz""",t)))
+        or (_s(r"""\b\d{3,4}\s?x\s?\d{3,4}\b""",t) and _s(r"""\d{2,3}\s?hz""",t))
+        or (not _s(r"""cable|extension|sleeved|diagnostic|post card|debug|clean|dust remover|heat ?sink|cooler|cooling|reader|enclosure|caddy|adapter|carrying|backpack|\bbag\b|panel mount|din rail|led driver|mean ?well|\bvalt\b|\bvolt\b|\bstand\b|holder|compatible with|bill fork""",t) and _s(r"""motherboard|mainboard|(mid|full|mini|micro)[- ]tower|\bcabinet\b|pc case|computer case|\bchassis\b|\bups\b|\b\d{3,4}\s?va\b|uninterrupt|power supply|\bpsu\b|internal (ssd|solid[- ]state)|\bnvme\b.{0,30}\b(ssd|solid[- ]state)""",t))
+        or _s(r"""(mid|full|mini|micro|super)[- ]?tower|pc cabinet|gaming cabinet|pc case|computer case|sff computer case|\bchassis\b""",t[:50])
+        or (_s(r"""\b\d{2}(\.\d{1,2})?\s?(inch|"|cm)""",t) and _s(r"""\b(ips|va|tn|oled|qhd|fhd|uhd|wqhd|\d{2,3}\s?hz|hdr\d*|full hd|quad hd|ultra hd|led backlit)\b""",t) and not _s(r"""\b(arm|mount|bracket|riser)\b""",t[:40])))
     if acHit and (headAcc or not deviceEvidence): return 'Accessories'
     # wifi/bluetooth dongles & NAS boxes -> Networking (before generic buckets)
     if _s(r"""(wi-?fi|wifi|802\.11|bluetooth).{0,60}(adapter|receiver|dongle)|\bax\d{4}\b.{0,60}(usb|adapter)""",t): return 'Networking'
@@ -100,11 +234,11 @@ def type_of(title):
     if _s(r"""usb.{0,20}\bhub\b|\bhub\b.{0,12}(usb|type-?c)""",t): return 'Accessories'
     if _s(r"""\b(usb(-c)?|type-?c|hdmi|vga|dvi|display ?port)\b.{0,24}adapter""",t) and not _s(r"""wi-?fi|wifi|bluetooth|802\.11""",t): return 'Accessories'
     if _s(r"""\bcharger\b""",t) and not _s(r"""car charger|travel|charging dock|charging station|controller""",t): return 'Accessories'
-    if _s(r"""\bdistro\b|water ?block|\breservoir\b|pump[- ]?res|hydro x|hardline|soft tubing|\bfittings?\b.{0,10}mm""",t): return 'Fans & Cooling'
+    if not _s(r"""graphics card|graphic card|\brtx\s?\d|\bgtx\s?\d|\bradeon rx""",t) and _s(r"""\bdistro\b|water ?block|\breservoir\b|pump[- ]?res|hydro x|hardline|soft tubing|\bfittings?\b.{0,10}mm""",t): return 'Fans & Cooling'
     if _s(r"""wave xlr|audio interface|\bgo xlr\b""",t): return 'Microphone'
     if _s(r"""next level racing|racing seat|\bnlr\b""",t): return 'Gaming Accessories'
     if (_s(r"""\b(case|cabinet|computer case) fans?\b""",t) or _s(r"""(cooling|dc|brushless) fans?\b.{0,20}(pc case|cabinet|cpu)|\bbrushless\b.{0,12}fan|\baxial\b.{0,24}cooling|cooling device""",t)) and not _s(r"""(mid|full|mini) tower|tempered glass|side panel""",t): return 'Fans & Cooling'
-    if _s(r"""^.{0,40}(cpu cooler|air cooler|tower cooler|liquid cooler|aio cooler)""",t): return 'Fans & Cooling'
+    if _s(r"""^.{0,40}(cpu cooler|air cooler|tower cooler|liquid cooler|aio cooler)""",t) and not _s(r"""\bssd\b|\bnvme\b|solid state""",t[:60]): return 'Fans & Cooling'
     # streaming gear & mobile-gaming add-ons
     if _s(r"""stream deck|capture device|chat link|green screen|key light|ring light|gaming trigger|\bpubg\b|\bbgmi\b""",t) and not _s(r"""graphics card|\bgpu\b|\bram\b|\bssd\b|processor|motherboard|\bmonitor\b""",t): return 'Gaming Accessories'
     # network gear that says "switch" (never Nintendo Switch)
@@ -114,7 +248,7 @@ def type_of(title):
     # office/home items PC stores also sell — 'Other' is dropped by normalize()/regroup
     if _s(r"""\bprinter\b|photocopier|\bscanner\b|\btoner\b|ink (tank|cartridge)|air purifier|water purifier|\bhepa\b|vacuum cleaner|\bprojector\b|\btablet\b|smart ?watch|antivirus|extension board|surge (cube|protector)|spike guard|power strip|travel adapter|car charger|power bank|electricity sav|id card|pvc card|laser pointer|wireless presenter|\bpure air\b|\binverter\b|smart notebook|syncpen|\bsmart pen\b|digital notepad|writing (pad|tablet)""",t): return 'Other'
     # digital goods (subscriptions, gift cards, game-pass) are NOT physical games or consoles
-    if _s(r"""game ?pass|membership|subscription|gift card|gift voucher|e-?gift|top.?up|live gold|psn (wallet|card|credit)|prepaid|redeem code|wallet code|digital code""",t) and not _s(r"""rog\s*(xbox\s*)?ally|steam ?deck|legion go|msi claw""",t): return 'Gaming Accessories'
+    if _s(r"""game ?pass|membership|subscription|gift card|gift voucher|e-?gift|\btop.?up\b|live gold|psn (wallet|card|credit)|prepaid|redeem code|wallet code|digital code""",t) and not _s(r"""rog\s*(xbox\s*)?ally|steam ?deck|legion go|msi claw""",t): return 'Gaming Accessories'
     # Sim-racing / flight gear is console-compatible but a PC peripheral -> Gaming Accessories.
     if _s(r"""racing wheel|sim racing|\bpedals?\b|\bshifter\b|handbrake|cockpit|wheel base|wheel stand|\bhotas\b|flight stick|sidestick|\bjoystick\b|playseat|fanatec|\bmoza\b|sim hub|wheel add|gear ?shift|sequential shifter|wheel mount|racing clamp""",t): return 'Gaming Accessories'
     # cheap retro "game stick"/emulator boxes are NOT real consoles — keep them out of the brand tabs
@@ -122,7 +256,7 @@ def type_of(title):
     # handheld gaming PCs (ROG Ally, Legion Go, Steam Deck) are PCs, not consoles
     if _s(r"""rog\s*(xbox\s*)?ally|legion go|steam ?deck|msi claw""",t) and not _s(r"""headset|headphone|earbud|\bcontroller\b|gamepad|mouse|keyboard|\bcase\b|\bskin\b|charger|\bdock\b|dongle|\bcable\b|\bgrip\b|\bstand\b|memory card|micro ?sd|upgrade kit|\bfor (the )?(rog|ally|steam ?deck|legion)\b|screen protector|tempered""",t): return 'Gaming Laptop'
     # PS5/console disc drives & blu-ray add-ons are accessories, not the console itself
-    if _s(r"""\bdisc drive\b|\bdisk drive\b|blu-?ray drive""",t): return 'Gaming Accessories'
+    if _s(r"""\bdisc drive\b|\bdisk drive\b|blu-?ray drive""",t) and _s(r"""ps5|playstation|xbox|console|blu-?ray""",t) and not _s(r"""hard dis[kc] drive|\bhdd\b""",t): return 'Gaming Accessories'
     if _s(r"""playstation portal|remote player|\bportal\b.*ps5|ps5.*\bportal\b""",t): return 'Gaming Accessories'
     # [r23] real Switch 2 hardware sold without the word "console" ("Online Game ...
     # 4K Dock, Joy-Con 2, GameChat") or with "Built-in GameChat" phrasing
@@ -140,7 +274,7 @@ def type_of(title):
     # ── r18: multi-system retro EMULATOR clones ("GAMESOUL", "620-in-1", "open
     # source game console", "20+ emulator") squat the console tabs by listing every
     # platform as compatible. Real Sony/MS/Nintendo consoles never say these.
-    if _s(r"""\bemulator\b|\bgamesoul\b|open source game console|retro (old )?(video )?game|revisit childhood|\d+\s?\+?\s*(in\s?1|emulators?)\b|built-?in\s+(games|classic)""",t): return 'Gaming Accessories'
+    if _s(r"""\bemulator\b|\bgamesoul\b|open source game console|retro (old )?(video )?game|revisit childhood|\d{2,}\s?\+?\s*(in\s?1|emulators?)\b|\d\s?\+?\s*emulators?\b|built-?in\s+(games|classic)""",t): return 'Gaming Accessories'
     if (_s(r"""\bconsole\b|handheld|game ?box|game ?stick|game ?player""",t)) and ((sum(_s(p,t) for p in (r"\bps[1-5]\b|playstation", r"\bxbox\b", r"\bnintendo\b|\bswitch\b")))>=2) and not _s(r"""\b(sony|microsoft)\b""",t[:32]): return 'Gaming Accessories'
     # r18b: console cases / pouches / screen-protectors / thumb-grips that merely
     # NAME a console are accessories (previously fell into the Components dump).
@@ -165,7 +299,7 @@ def type_of(title):
     # flash/memory cards live with pen drives, not the Components dump
     if _s(r"""micro ?sdx?c?\b|\bsd card\b|\bsdxc\b|\bsdhc\b|memory card|compact ?flash""",t): return 'Pen Drive'
     # earbuds/TWS/neckbands belong with headsets ("60HRS Playback" = audio tell)
-    if _s(r"""earbud|\btws\b|neckband|airdopes|airpods|\bin-ear\b|\d+\s?hrs? playback""",t): return 'Headset'
+    if _s(r"""earbud|\btws\b|neckband|airdopes|airpods|\bin-ear\b|\d+\s?hrs? playback""",t) and not _s(r"""speaker|soundbar|sound bar|party ?box""",t): return 'Headset'
     # [r21] "GAMING HEADSET ... with Mic" is a headset — the bare ' mic ' keyword must not win
     if _s(r"""headset|headphone""",t) and not _s(r"""\bmicrophone\b|condenser|\bxlr\b|boom arm|podcast mic""",t): return 'Headset'
     # chairs that don't literally say "gaming chair"
@@ -193,7 +327,7 @@ def type_of(title):
     # Laptops — even with a discrete GPU / mobile CPU — are laptops, not prebuilt desktops.
     # MUST run before the CPU+GPU prebuilt heuristic below or every gaming laptop becomes "Desktop PC".
     # \b\d{3,5}(hx|hs)\b catches mobile CPUs ("13620HX", "ULTRA9-290HX").
-    if not laptopCtx and not _s(r"""\b(laptop|notebook) (processors?|cpus?)\b|(processor|cpu) for (laptop|notebook)""",t) and (_s(r"""\b(laptops?|notebooks?)\b""",t) or (_s(r"""\b(vivobook|zenbook|ideapad|thinkpad|thinkbook|legion|\bloq\b|nitro\s?v|predator\s?helios|tuf gaming [af]|rog zephyrus|rog strix g\d|rog flow|\bvictus\b|inspiron|\bxps\b|vostro|\baspire\b|swift\s?\d|\bkatana\b|cyborg|\bmodern\s?\d{2}|galaxy book|macbook|surface (pro|laptop|go|book)|lg gram|thin\s?1[3-8]|\bsword\b|\braider\b|titan\s?1[68]|crosshair\s?1[68]|stealth\s?1[468]|prestige\s?1[46]|creator\s?1[68]|zbook|probook|elitebook|\benvy\b|spectre|chromebook)\b""",t) and not _s(r"""\bmonitor\b|\bmouse\b|(mechanical|gaming|wired|wireless|rgb|membrane) keyboard|keyboard with|headset|headphone|earbud|\bcontroller\b|gamepad|webcam|\bmic\b|microphone|soundbar|pen ?drive|flash drive""",t)) or _s(r"""\b\d{3,5}(hx|hs)\b""",t) or (_s(r"""\b(core\s?ultra\s?[3579]|core\s?i[3579]|ryzen\s?[3579])\b|\bcore\s?[3579]\b(?=.{0,20}(gen\b|\d{3}[hu]\b|processor))""",t) and _s(r"""\b\d{2}(\.\d)?\s*(inch|cm|")\b""",t) and _s(r"""\b(fhd|wuxga|wqxga|qhd|uhd|\d{2,3}\s?hz|ips|oled)\b""",t) and not _s(r"""\bmonitor\b|gaming pc|desktop pc""",t))): return 'Gaming Laptop'
+    if not laptopCtx and not _s(r"""\b(laptop|notebook) (processors?|cpus?)\b|(processor|cpu) for (laptop|notebook)""",t) and (_s(r"""\b(laptops?|notebooks?)\b""",t) or (_s(r"""\b(vivobook|zenbook|ideapad|thinkpad|thinkbook|legion|\bloq\b|nitro\s?v|predator\s?helios|tuf gaming [af]|rog zephyrus|rog strix g\d|rog flow|\bvictus\b|inspiron|\bxps\b|vostro|\baspire\b|swift\s?\d|\bkatana\b|cyborg|\bmodern\s?\d{2}|galaxy book|macbook|surface (pro|laptop|go|book)|lg gram|thin\s?1[3-8]|\bsword\b|\braider\b|titan\s?1[68]|crosshair\s?1[68]|stealth\s?1[468]|prestige\s?1[46]|creator\s?1[68]|zbook|probook|elitebook|\benvy\b|spectre|chromebook)\b""",t) and not _s(r"""\bmonitor\b|\bmouse\b|(mechanical|gaming|wired|wireless|rgb|membrane) keyboard|keyboard with|headset|headphone|earbud|\bcontroller\b|gamepad|webcam|\bmic\b|microphone|soundbar|pen ?drive|flash drive""",t)) or _s(r"""(?<![a-z]-)\b\d{4,5}(hx|hs)\b|\b\d{3}hx\b""",t) or (_s(r"""\b(core\s?ultra\s?[3579]|core\s?i[3579]|ryzen\s?[3579])\b|\bcore\s?[3579]\b(?=.{0,20}(gen\b|\d{3}[hu]\b|processor))""",t) and _s(r"""\b\d{2}(\.\d)?\s*(inch|cm|")\b""",t) and _s(r"""\b(fhd|wuxga|wqxga|qhd|uhd|\d{2,3}\s?hz|ips|oled)\b""",t) and not _s(r"""\bmonitor\b|gaming pc|desktop pc""",t))): return 'Gaming Laptop'
     # AMD APUs ("Ryzen 5 8600G ... with Radeon Graphics") and any single processor are CPUs,
     # not GPUs or prebuilt PCs — integrated graphics must NOT trigger Desktop/GPU classification.
     if _s(r"""\bprocessor\b""",t) and _s(r"""(ryzen|core\s?i[3579]|core\s?ultra|athlon|threadripper|pentium|celeron|\bxeon\b|\bi[3579][- ]?\d{3,5}\b)""",t) and not _s(r"""(gaming|desktop) pc.{0,26}(with rgb|with \d+\s?gb|featuring|tower|cabinet|full set|complete set)|pre.?built|barebone|\bcombo\b|\bbundle\b|motherboard|mainboard|mini tower|\bcabinet\b""",t): return 'Processor/CPU'
@@ -261,6 +395,20 @@ def group_id(brand, mk, title, category):
     base = _NONALNUM.sub("-", (str(category or "") + "-" + str(brand or "") + "-" + key).lower()).strip("-")
     clean = re.sub(r"-?generic-?", "-", base, count=1).strip("-")
     return clean or _NONALNUM.sub("-", str(title or "").lower()).strip("-")[:48]
+
+
+def recategorize(title, category, gid):
+    """Category and group id for a stored offer under the current rules: None when it is not a PC product any more.
+    Only the category part of the id changes ("motherboard-..." to "desktop-pc-..."), so the rest stays as it was made."""
+    new = type_of(title)
+    if new == "Other":
+        return None
+    if new == category:
+        return category, gid
+    old_prefix = _NONALNUM.sub("-", str(category or "").lower()).strip("-")
+    new_prefix = _NONALNUM.sub("-", new.lower()).strip("-")
+    gid = str(gid or "")
+    return new, (new_prefix + gid[len(old_prefix):] if old_prefix and gid.startswith(old_prefix) else gid)
 
 
 def specs_of(title, category):
