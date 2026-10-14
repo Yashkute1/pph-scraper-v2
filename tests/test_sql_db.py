@@ -138,23 +138,23 @@ def test_copy_from_mongo_keeps_history_and_rebuilds_products(db):
     assert copy(m, db)["offers"] == 2 and q(db, "SELECT COUNT(*) FROM scrape_runs")[0][0] == 2      # running it again changes nothing
 
 
-def test_a_dropped_connection_is_reopened_and_the_chunk_sent_again():
+def test_a_dropped_connection_is_reopened_and_the_statement_sent_again(db, monkeypatch):
     import pymysql
-    from pph.sql_db import _many
-    sent, pings = [], []
+    import time
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+    real = pymysql.cursors.Cursor.execute
+    calls = {"n": 0}
 
-    class Conn:
-        def ping(self, reconnect): pings.append(reconnect)
-
-    class Cur:
-        connection = Conn()
-        def executemany(self, sql, rows):
-            if not pings:
-                raise pymysql.err.OperationalError(2006, "MySQL server has gone away")
-            sent.extend(rows)
-    _many(Cur(), "INSERT", [[1], [2]])
-    assert sent == [[1], [2]] and pings == [True]
-    with pytest.raises(pymysql.err.OperationalError):
-        class Bad(Cur):
-            def executemany(self, sql, rows): raise pymysql.err.OperationalError(1064, "syntax")
-        _many(Bad(), "INSERT", [[1]])
+    def flaky(self, query, args=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise pymysql.err.OperationalError(2006, "MySQL server has gone away")
+        return real(self, query, args)
+    monkeypatch.setattr(pymysql.cursors.Cursor, "execute", flaky)
+    with db.cursor() as cur:
+        cur.execute("SELECT 1")
+        assert cur.fetchone() == (1,) and calls["n"] == 2
+        calls["n"] = 1                                   # a lost connection *during* a query is not retried: it may have run
+        monkeypatch.setattr(pymysql.cursors.Cursor, "execute", lambda self, q, a=None: (_ for _ in ()).throw(pymysql.err.OperationalError(2013, "lost")))
+        with pytest.raises(pymysql.err.OperationalError):
+            cur.execute("SELECT 1")

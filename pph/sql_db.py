@@ -68,7 +68,7 @@ def connect(url):
     import pymysql
     u = urlsplit(url)
     return pymysql.connect(host=u.hostname, port=u.port or 3306, user=unquote(u.username or ""), password=unquote(u.password or ""),
-                           database=u.path.lstrip("/"), charset="utf8mb4", autocommit=True, connect_timeout=20,
+                           database=u.path.lstrip("/"), charset="utf8mb4", autocommit=True, connect_timeout=20, cursorclass=_retry_cursor(),
                            read_timeout=600, write_timeout=600)
 
 
@@ -87,23 +87,33 @@ def _rows(cur, sql, args=None):
 
 
 MAX_STMT = 512 * 1024        # bytes per statement; shared hosts often reset connections that send very large packets
-LOST = (2006, 2013, 2055)    # server has gone away, lost connection during query, lost connection to server
+GONE = 2006                  # "server has gone away": the statement could not be sent, so it never ran
 
 
-def _many(cur, sql, rows, tries=3):
-    """executemany in chunks. A connection the host drops mid-write is reopened and the chunk sent again: every
-    write here is an upsert, a REPLACE or goes into a fresh table, so sending a chunk twice changes nothing."""
+def _retry_cursor():
+    """A cursor that reopens a connection the host has dropped and sends the statement again. Only error 2006 is
+    retried: the statement was never delivered, so sending it again cannot apply it twice."""
     import pymysql
-    cur.max_stmt_length = MAX_STMT
+
+    class RetryCursor(pymysql.cursors.Cursor):
+        max_stmt_length = MAX_STMT
+
+        def execute(self, query, args=None, _tries=4):
+            for attempt in range(_tries):
+                try:
+                    return super().execute(query, args)
+                except pymysql.err.OperationalError as e:
+                    if e.args[0] != GONE or attempt == _tries - 1:
+                        raise
+                    import time
+                    time.sleep(2 * (attempt + 1))
+                    self.connection.ping(reconnect=True)
+    return RetryCursor
+
+
+def _many(cur, sql, rows):
     for i in range(0, len(rows), BATCH):
-        for attempt in range(tries):
-            try:
-                cur.executemany(sql, rows[i:i + BATCH])
-                break
-            except pymysql.err.OperationalError as e:
-                if e.args[0] not in LOST or attempt == tries - 1:
-                    raise
-                cur.connection.ping(reconnect=True)
+        cur.executemany(sql, rows[i:i + BATCH])
 
 
 def ensure_indexes(db):
