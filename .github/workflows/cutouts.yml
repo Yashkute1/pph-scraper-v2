@@ -44,7 +44,7 @@ jobs:
         run: git fetch -q --depth 1 origin cutouts5 && git show FETCH_HEAD:manifest.txt > manifest.txt || echo "no manifest yet"
       - name: List photos that still need a cutout
         env:
-          MONGO_URI: ${{ secrets.MONGO_URI }}          # this step only reads image addresses; it downloads nothing
+          MYSQL_URL: ${{ secrets.MYSQL_URL }}          # this step only reads image addresses; it downloads nothing
         run: python -m tools.cutouts list todo.txt --shard ${{ matrix.shard }}/16 --limit 500
       - uses: actions/cache@v4
         with:
