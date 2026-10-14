@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches-ignore: ['dependabot/**', 'cutouts', 'status']   # those are covered by the pull request run, or hold no code
+    branches-ignore: ['dependabot/**', 'cutouts', 'status', 'audit']   # those are covered by the pull request run, or hold no code
   pull_request:
 permissions:
   contents: read
