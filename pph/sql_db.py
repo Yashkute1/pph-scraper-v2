@@ -12,6 +12,7 @@ from urllib.parse import unquote, urlsplit
 
 from .benchmarks import build_lookup
 from .group import rollup
+from .normalize import recategorize
 from .store_db import BATCH, DELETE_AFTER, MISSED_LIMIT, _history, gate, offer_id  # noqa: F401  (shared rules)
 
 SIZE_BUDGET = int(2.5 * 1024 ** 3)       # Hostinger gives each database 3 GB
@@ -56,6 +57,9 @@ SCHEMA = [
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""",
     """CREATE TABLE IF NOT EXISTS benchmarks (
       id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, bucket VARCHAR(16) NULL, `rank` INT NULL, doc TEXT NOT NULL, KEY bucket_rank (bucket, `rank`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""",
+    """CREATE TABLE IF NOT EXISTS group_redirects (
+      old_id VARCHAR(191) NOT NULL PRIMARY KEY, group_id VARCHAR(191) NOT NULL, created DATETIME NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""",
     """CREATE TABLE IF NOT EXISTS legacy_redirects (
       old_id VARCHAR(64) NOT NULL PRIMARY KEY, group_id VARCHAR(191) NOT NULL
@@ -242,6 +246,31 @@ def trim_history(db, keep=30):
         _many(cur, "UPDATE offers SET history=%s WHERE id=%s", rows)
 
 
+def recategorize_offers(db, now):
+    """Apply the current category rules to every stored offer, so a rule fix reaches the site at the next roll-up
+    instead of store by store. Offers that are no longer PC products are removed. A part whose id changes keeps its
+    old address working: the site sends it on to the new one."""
+    with db.cursor() as cur:
+        cur.execute("SELECT id, title, category, group_id FROM offers")
+        rows = cur.fetchall()
+        changed, gone, moved = [], [], {}
+        for oid, title, cat, gid in rows:
+            r = recategorize(title, cat, gid)
+            if r is None:
+                gone.append((oid,))
+            elif r != (cat, gid):
+                changed.append((r[0], r[1], oid))
+                if r[1] != gid:
+                    moved[gid] = r[1]
+        _many(cur, "UPDATE offers SET category=%s, group_id=%s WHERE id=%s", changed)
+        _many(cur, "DELETE FROM offers WHERE id=%s", gone)
+        _many(cur, "REPLACE INTO group_redirects (old_id, group_id, created) VALUES (%s,%s,%s)",
+              [(old, new, now) for old, new in moved.items() if old and new and old != new])
+        # an address that was sent on and is now a product again needs no redirect
+        cur.execute("DELETE r FROM group_redirects r JOIN offers o ON o.group_id = r.old_id")
+    return {"recategorized": len(changed), "removed": len(gone), "redirects": len(moved)}
+
+
 def write_rollup(db, now):
     """See store_db.write_rollup: rebuild the products from current offers; keep the old ones if there are none."""
     ensure_indexes(db)
@@ -249,8 +278,9 @@ def write_rollup(db, now):
         benchmarks = build_lookup(read_benchmarks(db))
     except Exception:
         benchmarks = None
+    fixed = recategorize_offers(db, now)
     rows = rollup(read_offers(db), now, benchmarks)
-    out = {"products": len(rows), "skipped": False, "bytes": None, "trimmed": False}
+    out = {"products": len(rows), "skipped": False, "bytes": None, "trimmed": False, **fixed}
     if not rows:
         out["skipped"] = True
         return out

@@ -1,8 +1,7 @@
-name: Move to MySQL
+name: Rebuild products
 
-# Run by hand (Actions > Move to MySQL > Run workflow). Copies offers with their price history, past runs,
-# benchmark scores and old-address redirects from MongoDB into the Hostinger MySQL database, then rebuilds the
-# products there. Safe to run more than once. Needs the MONGO_URI and MYSQL_URL secrets.
+# Run by hand to rebuild the site's product list from the stored offers now, instead of waiting for the next scrape
+# (for example after a change to the category rules). Writes nothing else.
 on:
   workflow_dispatch:
 
@@ -14,9 +13,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  copy:
+  rollup:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -26,8 +25,7 @@ jobs:
           python-version: '3.12'
           cache: pip
       - run: pip install -r requirements.txt
-      - name: Copy MongoDB to MySQL
+      - name: Roll up
         env:
-          MONGO_URI: ${{ secrets.MONGO_URI }}
           MYSQL_URL: ${{ secrets.MYSQL_URL }}
-        run: python -m tools.mongo_to_mysql
+        run: python -m pph.run rollup

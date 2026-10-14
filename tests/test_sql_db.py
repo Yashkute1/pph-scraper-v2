@@ -158,3 +158,22 @@ def test_a_dropped_connection_is_reopened_and_the_statement_sent_again(db, monke
         monkeypatch.setattr(pymysql.cursors.Cursor, "execute", lambda self, q, a=None: (_ for _ in ()).throw(pymysql.err.OperationalError(2013, "lost")))
         with pytest.raises(pymysql.err.OperationalError):
             cur.execute("SELECT 1")
+
+
+def test_rollup_applies_current_categories_and_keeps_old_addresses(db):
+    from pph.sql_db import offer_row, write_rollup
+    pc = "CHIST Gaming Desktop PC – AMD Ryzen 5 5600 Processor | 32GB DDR4 3200MHz RAM | 512GB NVMe SSD | B450 Motherboard | 650W PSU"
+    drone = "flyx E88 Pro 4K Drone with Smart Sensor DDR2 2 GB NVIDIA Chipset 0 bit 0 MHz Graphics Card"
+    with db.cursor() as cur:
+        from pph.sql_db import _upsert_offers
+        _upsert_offers(cur, [
+            offer_row("a" * 24, {"store": "amazon", "url": "u1", "title": pc, "price": 100000, "in_stock": True, "category": "Motherboard",
+                                 "group_id": "motherboard-chist-5600-b450", "brand": "Generic", "last_seen": T0}),
+            offer_row("b" * 24, {"store": "flipkart", "url": "u2", "title": drone, "price": 1600, "in_stock": True, "category": "Motherboard",
+                                 "group_id": "motherboard-flyx-e88", "brand": "Generic", "last_seen": T0}),
+        ])
+    out = write_rollup(db, day(1))
+    assert (out["recategorized"], out["removed"], out["redirects"]) == (1, 1, 1)
+    assert q(db, "SELECT group_id, category FROM products") == (("desktop-pc-chist-5600-b450", "Desktop PC"),)
+    assert q(db, "SELECT old_id, group_id FROM group_redirects") == (("motherboard-chist-5600-b450", "desktop-pc-chist-5600-b450"),)
+    assert q(db, "SELECT category FROM offers") == (("Desktop PC",),)
