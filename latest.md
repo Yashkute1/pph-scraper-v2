@@ -1,15 +1,15 @@
 # Scraper status
 
-Last run: 2026-10-14 18:00 UTC. 8 of 9 stores ok.
+Last run: 2026-10-14 19:39 UTC. 9 of 9 stores ok.
 
 | store | status | fetched | written | previous | seconds | note |
 |---|---|---|---|---|---|---|
-| elitehubs | ok | 13190 | 13190 | 13196 | 155 |  |
-| vishalperipherals | ok | 8398 | 8398 | 8397 | 92 |  |
-| pcstudio | ok | 2381 | 2381 | 2382 | 87 |  |
-| primeabgb | ok | 3512 | 3512 | 3512 | 546 |  |
-| vedantcomputers | ok | 488 | 488 | 495 | 200 |  |
-| theitdepot | ok | 2276 | 2276 | 2281 | 736 |  |
-| mdcomputers | ok | 2008 | 2008 | 2021 | 277 |  |
-| flipkart | ok | 6565 | 6565 | 8444 | 664 |  |
-| amazon | blocked | 0 | 0 | 6823 | 7 | store did not answer: Error |
+| elitehubs | dry-run | 13190 | 0 | 0 | 152 |  |
+| vishalperipherals | dry-run | 8398 | 0 | 0 | 97 |  |
+| pcstudio | dry-run | 2381 | 0 | 0 | 81 |  |
+| primeabgb | dry-run | 471 | 0 | 0 | 57 |  |
+| vedantcomputers | dry-run | 181 | 0 | 0 | 56 |  |
+| theitdepot | dry-run | 192 | 0 | 0 | 53 |  |
+| mdcomputers | dry-run | 503 | 0 | 0 | 52 |  |
+| flipkart | dry-run | 1858 | 0 | 0 | 146 |  |
+| amazon | dry-run | 995 | 0 | 0 | 515 |  |
