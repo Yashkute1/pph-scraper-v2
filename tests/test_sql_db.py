@@ -136,3 +136,25 @@ def test_copy_from_mongo_keeps_history_and_rebuilds_products(db):
     assert [h["p"] for h in json.loads(q(db, "SELECT history FROM offers WHERE group_id='g1'")[0][0])] == [1000, 950]
     assert q(db, "SELECT first_seen FROM offers WHERE group_id='g1'")[0][0] == day(0)
     assert copy(m, db)["offers"] == 2 and q(db, "SELECT COUNT(*) FROM scrape_runs")[0][0] == 2      # running it again changes nothing
+
+
+def test_a_dropped_connection_is_reopened_and_the_chunk_sent_again():
+    import pymysql
+    from pph.sql_db import _many
+    sent, pings = [], []
+
+    class Conn:
+        def ping(self, reconnect): pings.append(reconnect)
+
+    class Cur:
+        connection = Conn()
+        def executemany(self, sql, rows):
+            if not pings:
+                raise pymysql.err.OperationalError(2006, "MySQL server has gone away")
+            sent.extend(rows)
+    _many(Cur(), "INSERT", [[1], [2]])
+    assert sent == [[1], [2]] and pings == [True]
+    with pytest.raises(pymysql.err.OperationalError):
+        class Bad(Cur):
+            def executemany(self, sql, rows): raise pymysql.err.OperationalError(1064, "syntax")
+        _many(Bad(), "INSERT", [[1]])

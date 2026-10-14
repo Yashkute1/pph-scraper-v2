@@ -86,9 +86,24 @@ def _rows(cur, sql, args=None):
     return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 
-def _many(cur, sql, rows):
+MAX_STMT = 512 * 1024        # bytes per statement; shared hosts often reset connections that send very large packets
+LOST = (2006, 2013, 2055)    # server has gone away, lost connection during query, lost connection to server
+
+
+def _many(cur, sql, rows, tries=3):
+    """executemany in chunks. A connection the host drops mid-write is reopened and the chunk sent again: every
+    write here is an upsert, a REPLACE or goes into a fresh table, so sending a chunk twice changes nothing."""
+    import pymysql
+    cur.max_stmt_length = MAX_STMT
     for i in range(0, len(rows), BATCH):
-        cur.executemany(sql, rows[i:i + BATCH])
+        for attempt in range(tries):
+            try:
+                cur.executemany(sql, rows[i:i + BATCH])
+                break
+            except pymysql.err.OperationalError as e:
+                if e.args[0] not in LOST or attempt == tries - 1:
+                    raise
+                cur.connection.ping(reconnect=True)
 
 
 def ensure_indexes(db):
