@@ -1,17 +1,15 @@
 # Scraper status
 
-Last run: 2026-10-14 05:24 UTC. 8 of 9 stores ok.
+Last run: 2026-10-14 12:43 UTC. 8 of 9 stores ok.
 
 | store | status | fetched | written | previous | seconds | note |
 |---|---|---|---|---|---|---|
-| elitehubs | ok | 13196 | 13196 | 13196 | 177 |  |
-| vishalperipherals | ok | 8375 | 8375 | 8377 | 91 |  |
-| pcstudio | ok | 2381 | 2381 | 2388 | 83 |  |
-| primeabgb | ok | 3504 | 3504 | 3510 | 522 |  |
-| vedantcomputers | ok | 485 | 485 | 491 | 194 |  |
-| theitdepot | ok | 2279 | 2279 | 2281 | 708 |  |
-| mdcomputers | ok | 2006 | 2006 | 2038 | 250 |  |
-| flipkart | ok | 6366 | 6366 | 8647 | 693 |  |
+| elitehubs | ok | 13190 | 13190 | 13196 | 144 |  |
+| vishalperipherals | ok | 8397 | 8397 | 8375 | 83 |  |
+| pcstudio | ok | 2380 | 2380 | 2381 | 77 |  |
+| primeabgb | ok | 3512 | 3512 | 3507 | 529 |  |
+| vedantcomputers | ok | 489 | 489 | 488 | 187 |  |
+| theitdepot | ok | 2276 | 2276 | 2280 | 786 |  |
+| mdcomputers | ok | 2004 | 2004 | 2028 | 264 |  |
+| flipkart | ok | 6439 | 6439 | 8583 | 644 |  |
 | amazon | blocked | 0 | 0 | 6823 | 6 | store did not answer: Error |
-
-Products: 42824, database 139.3 MB
