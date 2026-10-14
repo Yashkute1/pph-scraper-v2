@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-      - run: pip install pymysql==1.1.2
+      - run: pip install pymysql==1.1.2 pymongo==4.10.1
       - name: Dump offers
         env:
           MYSQL_URL: ${{ secrets.MYSQL_URL }}
