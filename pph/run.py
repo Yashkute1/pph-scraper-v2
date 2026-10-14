@@ -28,6 +28,16 @@ def safe_error(e):
     return type(e).__name__
 
 
+# Exception names that mean the store could not be reached, from curl_cffi, the browser and Python itself. Anything
+# else (a broken browser install, a bug) must fail the run so it is noticed, not pass as "the store did not answer".
+NETWORK_ERRORS = {"Timeout", "TimeoutError", "ConnectTimeout", "ReadTimeout", "ConnectionError", "ConnectionResetError",
+                  "ConnectionRefusedError", "RequestsError", "CurlError", "SSLError", "ProxyError", "DNSError", "gaierror"}
+
+
+def _network_error(e):
+    return any(c.__name__ in NETWORK_ERRORS for c in type(e).__mro__)
+
+
 def _utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
 
@@ -92,7 +102,7 @@ def scrape(store, dry_run=False, max_pages=None, time_budget=None, db=None, now=
         complete, note = False, "store stopped responding part-way"
     except Exception as e:                      # keep whatever was fetched; never crash the job silently
         complete, note = False, safe_error(e)
-        if not offers:
+        if not offers and _network_error(e):
             # The store did not answer at all (timeouts, dropped connections). Like a refusal: nothing is written,
             # old prices stay, and the store is tried again from another machine instead of failing the run.
             blocked, note = True, "store did not answer: " + note

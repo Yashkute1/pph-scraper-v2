@@ -66,6 +66,14 @@ def test_store_that_does_not_answer_is_retried_not_failed(env):
     assert "did not answer" in run["note"]
 
 
+def test_a_program_error_is_a_failure_not_a_store_that_did_not_answer(env):
+    class Error(Exception):          # what the browser library raises when its browser is missing
+        pass
+    db = mongomock.MongoClient().pph_site
+    code, run = go([], db, error=Error("Executable doesn't exist"))
+    assert (code, run["status"]) == (1, "failed")
+
+
 def test_empty_listing_is_failed(env):
     db = mongomock.MongoClient().pph_site
     code, run = go([], db, error=EmptyListingError("u"))
