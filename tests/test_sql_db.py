@@ -19,7 +19,7 @@ def db():
     from pph import sql_db
     c = sql_db.connect(URL)
     with c.cursor() as cur:
-        for t in ("offers", "products", "product_facets", "product_stores", "scrape_runs", "benchmarks", "legacy_redirects"):
+        for t in ("offers", "products", "product_facets", "product_stores", "scrape_runs", "benchmarks", "legacy_redirects", "group_redirects"):
             cur.execute(f"DROP TABLE IF EXISTS {t}")
     sql_db.ensure_indexes(c)
     yield c
@@ -177,3 +177,13 @@ def test_rollup_applies_current_categories_and_keeps_old_addresses(db):
     assert q(db, "SELECT group_id, category FROM products") == (("desktop-pc-chist-5600-b450", "Desktop PC"),)
     assert q(db, "SELECT old_id, group_id FROM group_redirects") == (("motherboard-chist-5600-b450", "desktop-pc-chist-5600-b450"),)
     assert q(db, "SELECT category FROM offers") == (("Desktop PC",),)
+
+
+def test_load_redirects_skips_live_and_missing_targets(db):
+    from pph.sql_db import write_rollup, write_store
+    from tools.load_redirects import load
+    write_store(db, "a", [o("a", 1, gid="ssd-msi-new")], T0, blocked=False)
+    write_rollup(db, day(1))
+    out = load(db, [("ssd-old", "ssd-msi-new"), ("ssd-msi-new", "x"), ("ssd-gone", "nowhere")], T0)
+    assert out == {"pairs": 3, "loaded": 1, "skipped": 2}
+    assert q(db, "SELECT old_id, group_id FROM group_redirects") == (("ssd-old", "ssd-msi-new"),)
