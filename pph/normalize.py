@@ -143,26 +143,39 @@ def _audit_fixes(t):
     """Listings the October 2026 live audit found in the wrong place; checked before the general rules."""
     if _s(r"degreaser|stain remover|kitchen chimney", t):
         return 'Other'
+    # Flipkart's "... Cabinet with USB 2.0 and USB 3.0 Ports Compatible with Computer" ending on bins, pens and organisers
+    m = re.search(r"cabinet with usb 2\.?\s?0( and usb 3\.?\s?0)? ports compatible with (computer|gaming console)", t, A)
+    if m:
+        head = t[:m.start()]
+        if _s(r"\bmat\b|desk ?pad|mouse ?pad|workspace pad", head): return 'Mousepad'
+        if _s(r"\bbin\b|\bbox\b|laser|\bpen\b|organi[sz]er|divider|presenter|clicker|remote|holder|\btray\b|multi ?purpose", head): return 'Other'
     m = _FK_CPU.search(t)
     if m:
         head = t[:m.start()]
-        return 'Processor/CPU' if _s(_CPU, head) else 'Gaming Accessories' if _s(r"\bvr\b|virtual reality|3d glasses", head) else 'Other'
+        real = _s(r"ryzen|core\s?i[3579]|\bi[3579][- ]?\d{3,5}|core 2|xeon|pentium|celeron|athlon|threadripper|core\s?ultra", head)
+        return 'Processor/CPU' if real else 'Gaming Accessories' if _s(r"\bvr\b|virtual reality|3d glasses", head) else 'Other'
     m = _FK_BOARD.search(t)
     if m:
         head = t[:m.start()]
+        if _s(r"diagnostic|tester|analy[sz]er|debug card|post card", head): return 'Accessories'
         if _s(r"motherboard|\b[abhxz]\d{2,3}[a-z]?\b|\blga\b", head): return 'Motherboard'
         return 'Gaming Accessories' if _s(r"\bvr\b|virtual reality|3d glasses", head) else 'Other'
     # bare power supply circuit boards and 12 V adapters are electronics spares, not PC power supplies
     if _s(r"power supply (board|pcb|module|circuit)|smps (bare )?circuit|bare circuit|bread ?board power|\bpcb\b.{0,30}(smps|power supply)|"
-          r"\d+\s?v(olts?)? \d+(\.\d+)?\s?a(mps?)?\b.{0,40}(dc )?(power )?(adapter|adaptor)|dc power (adapter|adaptor)", t) \
-            and not _s(r"\batx\b|\b[3-9]\d0\s?w(att)?\b|\b1\d{3}\s?w(att)?\b|80\s?\+|modular", t):
+          r"\d+\s?v(olts?)? \d+(\.\d+)?\s?a(mps?)?\b.{0,40}(dc )?(power )?(adapter|adaptor)|dc power (adapter|adaptor)|"
+          r"(smps|power supply|adapter|adaptor|led driver).{0,60}(\b\d+(\.\d+)?\s?v\b[ ,]{0,3}\d+(\.\d+)?\s?a(mp)?\b|\b\d+(\.\d+)?\s?a(mp)?\b[ ,]{0,3}\d+(\.\d+)?\s?v\b|\d+v,\s?\d+v)|"
+          r"(\b\d+(\.\d+)?\s?v\b[ ,]{0,3}\d+(\.\d+)?\s?a(mp)?\b|\b\d+(\.\d+)?\s?a(mp)?\b[ ,]{0,3}\d+(\.\d+)?\s?v\b).{0,60}(smps|power supply|adapter|adaptor|led driver)|"
+          r"(smps|power supply).{0,40}(cctv|led strip|ro water|purifier)|led driver", t) and not _s(r"cooling fan|\bfan\b.{0,10}cooler|\bups\b|battery backup", t) \
+            and not _s(r"\batx\b|\b[3-9]\d0\s?w(att)?\b|\b1\d{3}\s?w(att)?\b|80\s?\+|80 plus|modular|pcie|pci-e|6\+2|4\+4|bronze|gold", t):
         return 'Other'
     if _s(r"thermal (silicone |silicon |conductive |cunductive )?(pads?|putty)\b|conductive pad|\btg putty\b|fever patch", t) and not _s(r"laptop stand", t):
         return 'Thermal Paste'
     if _s(r"gaming (surface )?mat\b|gaminig mat|desk ?(pad|mat)\b|workspace mat|surface mat", t) and not _s(r"chair|cabinet with (fan|glass)", t[:30]):
         return 'Mousepad'
-    if _s(_COOLING_FAN, t) and not _s(_TOWER, t) and not _s(_RAM_SIZE, t) \
-            and not _s(r"\bups\b|inverter|table fan|ceiling fan|pedestal|air purifier|neck fan|enclosure|thermal (paste|compound|grease)|"
+    cpu_first = _s(_CPU, t[:40]) and 0 <= t.find("processor") < t.find("fan")
+    gpu_card = _s(r"\bgddr\d|\d+\s?gb\b.{0,30}(graphics|video) card|(graphics|video) card.{0,60}(\d+\s?gb|pci express|\d+ bit)", t)
+    if _s(_COOLING_FAN, t) and not _s(_TOWER, t) and not _s(_RAM_SIZE, t) and not cpu_first and not gpu_card \
+            and not _s(r"\bups\b|inverter|table fan|ceiling fan|pedestal|air purifier|neck fan|enclosure|thermal (paste|compound|grease)|power supply|\bpsu\b|\d{3}\s?w\b|"
                        r"\bps[2345]\b|playstation|xbox|nintendo|\bswitch\b|motherboard (combo|kit)|combo kit|\bkit\b.{0,40}(processor|\bi[3579]\b)", t):
         return 'Fans & Cooling'
     if _s(r"keyboard (cover|skin|protector)|webcam (privacy )?cover|camera privacy cover|privacy cover for|hard (drive|disk) (bay )?caddy|"
@@ -171,7 +184,7 @@ def _audit_fixes(t):
         return 'Accessories'
     if _s(r"\b\d+\s?(gb|tb)\b.{0,80}(all in one pc'?s|surveillance systems)", t) and _s(r"sata|internal|hard|\bhdd\b|\bintern", t):
         return 'SSD' if _s(r"\bssd\b|solid state", t) else 'HDD'
-    if _s(r"\bnas\b.{0,30}(internal )?(hard (disk )?drive|\bhdd\b|\bssd\b|solid state)|(hard (disk )?drive|\bhdd\b).{0,30}\bnas\b|ironwolf|\bwd red\b|red pro\b.{0,40}hard", t) \
+    if _s(r"\bnas\b.{0,30}(internal )?(hard (disk )?drive|\bhdd\b|\bssd\b|solid state)|(hard (disk|drive)|\bhdd\b).{0,30}\bnas\b|ironwolf|\bwd red\b|red pro\b.{0,40}hard", t) \
             and not _s(r"diskstation|\bbay\b|enclosure|\bds\d{3,4}|\bts-\d", t):
         return 'SSD' if _s(r"\bssd\b|solid state", t) else 'HDD'
     if _s(r"^\s*\S+\s+bluetooth speaker|\bbluetooth speaker\b.{0,30}(sd card|aux|stereo)", t):
@@ -229,7 +242,7 @@ def _type_of(title):
         return 'Other'
     if _s(r"multifunction (printer|laser|inkjet)?|imageclass|laserjet|inkjet|ink tank|\bprinter\b", t) and not _s(r"3d printed|printer cable|\bfor\b.{0,10}printer", t): return 'Other'
     if _s(r"live streamer|streaming kit|stream(ing)? deck", t) and not _s(r"\bmic\b|microphone|headset|webcam|\bcam\b", t): return 'Gaming Accessories'
-    if _s(r"\b(1[24]0|[89]0|200)\s?mm\b.{0,40}\b(argb|rgb|pwm|fans?)\b", t[:70]) and not _s(_CPU, t) and not _s(r"radiator|aio|liquid|cabinet|\bcase\b|tower|cooler", t[:50]):
+    if _s(r"\b(1[24]0|[89]0|200)\s?mm\b.{0,40}\b(argb|rgb|pwm|fans?)\b", t[:70]) and not _s(_CPU, t) and not _s(r"radiator|aio|liquid|cabinet|\bcase\b|tower|cooler|power supply|\bsmps\b|\bpsu\b", t[:50]):
         return 'Fans & Cooling'
     if _s(r"\bdock(ing)?\b.{0,30}(usb|type-?c|display|hdmi|station)|(usb|type-?c|thunderbolt).{0,30}\bdock(ing)?\b", t) and not _s(r"ps[345]|playstation|xbox|nintendo|controller|\bssd\b|enclosure|laptop\b.{0,10}(with|\+)|monitor|\binch\b", t):
         return 'Accessories'
