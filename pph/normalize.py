@@ -131,10 +131,68 @@ def type_of(title):
     return cat
 
 
+# Flipkart lists toys and gadgets with a made-up spec ending: "... 5.4 GHz sTR4 2 Core Processor Designed for Mobile" or
+# "... AM1Socket ATX AMD 320 Chipset DDR2 Motherboard for Mobile". The ending says nothing; the start says what it is.
+_FK_CPU = re.compile(r"\d+(\.\d+)? ghz \S+ \d+ core processor designed for (desktop|mobile|server|workstation)", A)
+_FK_BOARD = re.compile(r"\S*socket (e-?atx |micro ?atx |mini ?itx |atx )?(amd |intel )?\S+ chipset ddr\d motherboard for (mobile|desktop|server)", A)
+_COOLING_FAN = r"(cooling|cabinet|pwm|cpu|case|exhaust|motherboard|laptop|replacement) (cooling )?fan\b|\bfan cpu\b|\bcooling pad\b|laptop cooler\b|card cooler\b"
+_TOWER = r"\b(mid|full|mini|micro)[- ]?tower\b|\batx (mid )?(tower|case|cabinet)|\bcabinet with\b|\bcase with\b|\bchassis\b|aquarium|\b\d fans?\b.{0,20}(included|pre-?installed)"
+
+
+def _audit_fixes(t):
+    """Listings the October 2026 live audit found in the wrong place; checked before the general rules."""
+    if _s(r"degreaser|stain remover|kitchen chimney", t):
+        return 'Other'
+    m = _FK_CPU.search(t)
+    if m:
+        head = t[:m.start()]
+        return 'Processor/CPU' if _s(_CPU, head) else 'Gaming Accessories' if _s(r"\bvr\b|virtual reality|3d glasses", head) else 'Other'
+    m = _FK_BOARD.search(t)
+    if m:
+        head = t[:m.start()]
+        if _s(r"motherboard|\b[abhxz]\d{2,3}[a-z]?\b|\blga\b", head): return 'Motherboard'
+        return 'Gaming Accessories' if _s(r"\bvr\b|virtual reality|3d glasses", head) else 'Other'
+    # bare power supply circuit boards and 12 V adapters are electronics spares, not PC power supplies
+    if _s(r"power supply (board|pcb|module|circuit)|smps (bare )?circuit|bare circuit|bread ?board power|\bpcb\b.{0,30}(smps|power supply)|"
+          r"\d+\s?v(olts?)? \d+(\.\d+)?\s?a(mps?)?\b.{0,40}(dc )?(power )?(adapter|adaptor)|dc power (adapter|adaptor)", t) \
+            and not _s(r"\batx\b|\b[3-9]\d0\s?w(att)?\b|\b1\d{3}\s?w(att)?\b|80\s?\+|modular", t):
+        return 'Other'
+    if _s(r"thermal (silicone |silicon |conductive |cunductive )?(pads?|putty)\b|conductive pad|\btg putty\b|fever patch", t) and not _s(r"laptop stand", t):
+        return 'Thermal Paste'
+    if _s(r"gaming (surface )?mat\b|gaminig mat|desk ?(pad|mat)\b|workspace mat|surface mat", t) and not _s(r"chair|cabinet with (fan|glass)", t[:30]):
+        return 'Mousepad'
+    if _s(_COOLING_FAN, t) and not _s(_TOWER, t) and not _s(_RAM_SIZE, t) \
+            and not _s(r"\bups\b|inverter|table fan|ceiling fan|pedestal|air purifier|neck fan|enclosure|thermal (paste|compound|grease)|"
+                       r"\bps[2345]\b|playstation|xbox|nintendo|\bswitch\b|motherboard (combo|kit)|combo kit|\bkit\b.{0,40}(processor|\bi[3579]\b)", t):
+        return 'Fans & Cooling'
+    if _s(r"keyboard (cover|skin|protector)|webcam (privacy )?cover|camera privacy cover|privacy cover for|hard (drive|disk) (bay )?caddy|"
+          r"2nd hard drive|hard disk case|hdd (enclosure|caddy)|ssd enclosure", t) \
+            and not (_s(r"\bweb ?cam(era)?\b", t[:40]) and _s(r"\b(1080p|720p|2k|4k|qhd|fhd|full hd|microphone)\b", t)):
+        return 'Accessories'
+    if _s(r"\b\d+\s?(gb|tb)\b.{0,80}(all in one pc'?s|surveillance systems)", t) and _s(r"sata|internal|hard|\bhdd\b|\bintern", t):
+        return 'SSD' if _s(r"\bssd\b|solid state", t) else 'HDD'
+    if _s(r"\bnas\b.{0,30}(internal )?(hard (disk )?drive|\bhdd\b|\bssd\b|solid state)|(hard (disk )?drive|\bhdd\b).{0,30}\bnas\b|ironwolf|\bwd red\b|red pro\b.{0,40}hard", t) \
+            and not _s(r"diskstation|\bbay\b|enclosure|\bds\d{3,4}|\bts-\d", t):
+        return 'SSD' if _s(r"\bssd\b|solid state", t) else 'HDD'
+    if _s(r"^\s*\S+\s+bluetooth speaker|\bbluetooth speaker\b.{0,30}(sd card|aux|stereo)", t):
+        return 'Speakers'
+    if _s(r"\bwebcam\b", t[:70]) and not _s(r"webcam cover|privacy cover for", t) and not _s(r"\bmonitor\b", t[:70]):
+        return 'Webcam'
+    if _s(r"\bmicrophone\s*$", t) and _s(r"\bmic\b|selfie|wireless", t):
+        return 'Microphone'
+    if _s(r"\b(intel )?(core )?i[3579]\s?\(?\d{4}\)?\b.{0,40}processor for (h\d{2}|[abhxz]\d{3}|lga|am\d)|processor for (h\d{2}|[abhxz]\d{3}) (board|chipset|motherboard)", t) \
+            and not _s(_RAM_SIZE, t):
+        return 'Processor/CPU'
+    return None
+
+
 def _type_of(title):
     t = ' ' + _WS.sub(' ', _DOTS.sub(' ', str(title).lower())) + ' '
     if _s(r"fidget|stress relief|(keyboard|switch|keycap|toy)\s?key ?chain|key ?chain\s?(toy|fidget)", t) and not _s(r"pen ?drive|flash drive|usb drive|memory stick", t):
         return 'Other'
+    fix = _audit_fixes(t)
+    if fix:
+        return fix
     fk = _FK_GPU.search(t) or _FK_SSD.search(t)
     if fk:
         head = t[:fk.start()] + ' '
