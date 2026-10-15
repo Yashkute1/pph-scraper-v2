@@ -147,6 +147,19 @@ def test_rollup_regroups_an_offer_whose_id_was_vague():
     ("AOC CU34V5CWBK 34 Inch Curved Webcam Monitor", "Monitor"),
     ("Intel i3 (3240) 3rd Gen Processor for H61 Chipset Motherboards 3.4 GHz LGA 1155 Socket 2 Cores Desktop Processor", "Processor/CPU"),
     ("MAK All-in-One Dual Wireless Mic and LED Selfie Stick for Creators Microphone", "Microphone"),
+    ("TekBud ESP32 WiFi Bluetooth Dual Core Development Board 0.24 GHz LGA1700 2 Core Processor Designed for Desktop", "Other"),
+    ("PreSolve i3-6100 Processor 3.7 GHz LGA 1151 2 Core Processor Designed for Desktop", "Processor/CPU"),
+    ("LipiWorld PCI 4 Digit PC Motherboard Analyser Diagnostic Card Tester AM1Socket ATX AMD 320 Chipset DDR2 Motherboard for Desktop", "Accessories"),
+    ("12V 1A Switch Mode Power Supply- (SMPS)", "Other"),
+    ("Electronic Spices Multi Volts Multi-Purpose SMPS Power Supply (24V,12V,5V,3.3V 1amp)", "Other"),
+    ("sky enterprise shop ESD BIN PP BOX SIZE H300XL200XW100 MM BOX Cabinet with USB 2.0 Ports Compatible with Computer", "Other"),
+    ("Toshiba MG08ACA16TE Internal Hard Disk Server for NAS 3.5\" 16TB", "HDD"),
+    ("FINGERS FirstClass-E9 MicroATX Cabinet with USB 2.0 and USB 3.0 Ports Compatible with Computer", "PC Case/Chassis"),
+    ("ASUS ROG STRIX Arion NVME M.2 SSD Enclosure Cabinet with USB 2.0 and USB 3.0 Ports Compatible with Computer", "Accessories"),
+    ("Zebronics Premium Power Supply, Long Flat Cables, Silent 120mm Fan, 12V 32A, 6+2 PCIe, 4+4 CPU, 4 x SATA, 2 x MOLEX, RGB", "Power Supply"),
+    ("GT 1030 4G DDR4 Gaming Graphics Card, 64 Bit 2100MHz PCI Express 3.0 x4 Video Card with Cooling Fan", "Graphics Card"),
+    ("Core i3 4th Gen Desktop Processor, 2.9 GHz to 3.8 GHz, LGA 1150 Socket, 2 Cores 4 Threads, 3/4MB Cache, with Cooling Fan", "Processor/CPU"),
+    ("DooBuy E97379-001 Core i3/i5/i7 Socket 1150/1155/1156 4-Pin Connector CPU Cooler Cooling Fan Processor Cooler", "Fans & Cooling"),
 ])
 def test_audit_finds(title, want):
     assert type_of(title) == want
