@@ -118,3 +118,35 @@ def test_rollup_regroups_an_offer_whose_id_was_vague():
     assert cat == "Fans & Cooling" and gid != "fans-cooling-deepcool-120mm" and "assassin" in gid
     # a clear model number is left alone
     assert recategorize("MSI B550M-A Pro Motherboard", "Motherboard", "motherboard-msi-b550m", "MSI") == ("Motherboard", "motherboard-msi-b550m")
+
+
+@pytest.mark.parametrize("title,want", [
+    # found in the wrong category by the October 2026 live audit
+    ("VirtuCraft VR Goggles with Wide Field of View 5.4 GHz sTR4 2 Core Processor Designed for Mobile", "Gaming Accessories"),
+    ("Altivus E88 Pro HD Drone with Hover Stability 2.4 GHz AM4 4 Core Processor Designed for Workstation", "Other"),
+    ("markif E88 SMOOTH FLYING DRONE FOR KIDS AM1Socket ATX AMD 320 Chipset DDR2 Motherboard for Mobile", "Other"),
+    ("ZEBRONICS H61-NVM2P-i3-4GB LGA 1155Socket ATX Intel H61 Chipset DDR3 Motherboard for Desktop", "Motherboard"),
+    ("5V 2A Power Supply Board (PCB) (220V AC to 5V DC SMPS Power Supply PCB Circuit)", "Other"),
+    ("CARE CASE 12V 2A DC Power Adapter,Powers Supply,Charge,TFT Pin SMPS for PC,LCD Monitor,TV,LED Strip", "Other"),
+    ("Corsair RM750e ATX 3.1 Gold Fully Modular White SMPS", "Power Supply"),
+    ("4 DOT FOURDOT COOLINGS 120mm 5Inch Desktop Computer Cabinet Cooling Fan, 12V 2000RPM, 4Pin Motherboard Connector", "Fans & Cooling"),
+    ("Sparewave GPU TUF Gaming FX505 FX566 FX705 Laptop Cooling Fan Laptop Cooler", "Fans & Cooling"),
+    ("Corsair 4000D Airflow Mid Tower ATX Case with 2 Cooling Fans", "PC Case/Chassis"),
+    ("CRMTECK Compatible with PS5 Vertical Stand with Cooling Fan, Controller Charging Station", "Gaming Accessories"),
+    ("H61 ATX Motherboard Combo Kit with Core i3 3220 3rd Gen Processor | 4GB DDR3 RAM | Free CPU Cooling Fan", "Desktop PC"),
+    ("SURADI Extended Desk Pad for Comfortable Use Setup GAMINIG MAT Cabinet with USB 2.0 and USB 3.0 Ports", "Mousepad"),
+    ("Thermal Grizzly TG Putty Basic Electrically Non-Conductive Thermal Interface Material for GPU Modding", "Thermal Paste"),
+    ("Toshiba N300 4TB 7200 RPM NAS Hard Drive", "HDD"),
+    ("Western Digital 4TB WD Red SA500 NAS 3D NAND Internal SSD Solid State Drive", "SSD"),
+    ("Synology Diskstation DS425 Plus 4-Bay NAS Enclosure", "Networking"),
+    ("drivenova d320n 320 GB All in One PC's, Desktop, Laptop, Surveillance Systems Black SATA Intern...", "HDD"),
+    ("GUGGU Bluetooth Speaker Support SD Card/Aux With Stereo Sound H219 10 W Bluetooth Laptop/Desktop Speaker", "Speakers"),
+    ("RAYA Keyboard Cover for Samsung Galaxy Book 4 Pro 360 16 inch Keyboard Skin", "Accessories"),
+    ("Poly By Plantronics Studio P5 Professional Webcam - 1080P Hd Laptop Camera - Monitor & Tripod Mount", "Webcam"),
+    ("Orlov Executive 2K QHD Webcam with Dual Mic & Privacy Cover for Laptop & PC", "Webcam"),
+    ("AOC CU34V5CWBK 34 Inch Curved Webcam Monitor", "Monitor"),
+    ("Intel i3 (3240) 3rd Gen Processor for H61 Chipset Motherboards 3.4 GHz LGA 1155 Socket 2 Cores Desktop Processor", "Processor/CPU"),
+    ("MAK All-in-One Dual Wireless Mic and LED Selfie Stick for Creators Microphone", "Microphone"),
+])
+def test_audit_finds(title, want):
+    assert type_of(title) == want
