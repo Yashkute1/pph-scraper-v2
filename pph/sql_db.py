@@ -262,8 +262,19 @@ def recategorize_offers(db, now):
                 changed.append((r[0], r[1], oid))
                 if r[1] != gid:
                     moved[gid] = r[1]
-        _many(cur, "UPDATE offers SET category=%s, group_id=%s WHERE id=%s", changed)
-        _many(cur, "DELETE FROM offers WHERE id=%s", gone)
+        if changed:
+            # One joined UPDATE instead of a round trip per offer: a regrouping can touch thousands of rows and the
+            # database is far from the runner. A plain table, so a reconnect in between does not lose it.
+            cur.execute("DROP TABLE IF EXISTS recat_work")
+            cur.execute("CREATE TABLE recat_work (id CHAR(24) NOT NULL PRIMARY KEY, category VARCHAR(64), group_id VARCHAR(191)) "
+                        "DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci")
+            _many(cur, "INSERT INTO recat_work (category, group_id, id) VALUES (%s,%s,%s)", changed)
+            cur.execute("UPDATE offers o JOIN recat_work r ON r.id = o.id SET o.category = r.category, o.group_id = r.group_id")
+            cur.execute("DROP TABLE recat_work")
+        ids = [g[0] for g in gone]
+        for i in range(0, len(ids), 1000):
+            part = ids[i:i + 1000]
+            cur.execute("DELETE FROM offers WHERE id IN (%s)" % ",".join(["%s"] * len(part)), part)
         _many(cur, "REPLACE INTO group_redirects (old_id, group_id, created) VALUES (%s,%s,%s)",
               [(old, new, now) for old, new in moved.items() if old and new and old != new])
         # an address that was sent on and is now a product again needs no redirect
