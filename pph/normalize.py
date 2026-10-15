@@ -120,6 +120,18 @@ def _system(t):
 
 
 def type_of(title):
+    """The site category for a listing title, or "Other" when it is not a PC product."""
+    cat = _type_of(title)
+    # A bare brand ("ZORBES", "Case Club") lands in the catch-all; it says nothing about what the product is.
+    if cat == "Components" and len(re.findall(r"[a-z0-9]+", str(title).lower())) < 3:
+        return "Other"
+    # books about computers are not computers
+    if re.search(r"comprehensive guide|\bpaperback\b|\bhardcover\b|\bkindle edition\b|\bebook\b|\bhandbook\b", str(title), re.I):
+        return "Other"
+    return cat
+
+
+def _type_of(title):
     t = ' ' + _WS.sub(' ', _DOTS.sub(' ', str(title).lower())) + ' '
     if _s(r"fidget|stress relief|(keyboard|switch|keycap|toy)\s?key ?chain|key ?chain\s?(toy|fidget)", t) and not _s(r"pen ?drive|flash drive|usb drive|memory stick", t):
         return 'Other'
@@ -195,6 +207,10 @@ def type_of(title):
     if _s(_CPU, t[:48]) and _s(r"processor|\bcpu\b|\bapu\b", t) and not _s(_RAM_SIZE, t) \
             and not _s(r"\bcombo\b|\bkit\b|bundle|laptop|notebook|\binch\b|win(dows)?\s?1[01]|\bfhd\b|series (cpu|processor)|\b[abxzh]\d{3}[a-z]?\b.{0,30}(socket|series)", t) and not _s(_LAPTOP_MODELS, t) and not _s(r"motherboard|mainboard", t[:40]) \
             and not (_s(r"cooler|liquid|\baio\b|\bfan\b|heat ?sink", t) and not _s(r"(cooler|fan)[^,)]{0,15}not included|without (a )?(cooler|fan)", t)):
+        return 'Processor/CPU'
+    # a Ryzen "G" chip "with Radeon (RX) Vega graphics" names its built-in graphics, not a graphics card
+    if _s(r"ryzen\s?[3579]\s?\d{4}ge?\b", t[:40]) and _s(r"with radeon( rx)?( vega)?( \d+)? graphics|with radeon (rx )?vega", t) \
+            and not _s(_RAM_SIZE, t) and not _s(r"\bcombo\b|\bkit\b|bundle|laptop|notebook|motherboard|mainboard|\bssd\b", t):
         return 'Processor/CPU'
     return _rules_type(title)
 
@@ -358,7 +374,7 @@ def _rules_type(title):
         for pty,pkeys in [['Keyboard',['keyboard']],['Mouse',[' mouse']],['Webcam',['webcam','web cam']],['Microphone',['microphone','condenser mic','usb mic',' mic ']],['Headset',['headset','headphone','earphone']],['Speakers',['speaker','soundbar']],['Pen Drive',['pen drive','pendrive','flash drive','usb drive']]]:
             if any(k in t for k in pkeys): return pty
     hasCpu=_s(r"""(ryzen|core\s+i[3579]|core\s+ultra|threadripper|\bxeon\b|\bultra\s?[3579]\s?\d{3}k?\b|\bc?i[3579]-?\d{4,5}[a-z]{0,2}\b)""",t)
-    hasGpu=_s(r"""(\brtx\s?\d|\bgtx\s?\d|geforce|radeon\s?rx|\brx\s?[5-9]\d{3}|arc\s?a\d)""",t)
+    hasGpu=_s(r"""(\brtx\s?\d|\bgtx\s?\d|geforce|radeon\s?rx(?!\s?vega)|\brx\s?[5-9]\d{3}|arc\s?a\d)""",t)
     # prebuilt detection BEFORE component matching: explicit words, CPU+GPU, or 3+ parts.
     # [r19] bare DDR DIMM/UDIMM modules ("DIMM Desktop PC Module") are RAM, not prebuilts
     if _s(r"""\b(u|so-?)?dimm\b(?!\s*slots?)""",t) and _s(r"""\bddr[2345]l?\b""",t) and not _s(r"""motherboard|mainboard""",t): return 'Memory/RAM'
@@ -386,23 +402,76 @@ def model_key(title):
     return "-".join(sorted(set(tk)))[:90]
 
 
+# Key parts that say what size or kind a thing is, not which model it is: "120mm", "1tb", "16gb", "v2", "1080p", "ps5".
+_VAGUE = re.compile(r"^(\d+(\.\d+)?(mm|cm|mb|gb|tb|kg|hz|mhz|ghz|rpm|mah|pcs|inch|ft|ml|mbps|gbps|db|w)|\d{1,3}g|v\d+|\d{3,4}p|[248]k"
+                    r"|(19|20)\d\d|ps[1-5]|usb\d?|ddr\d|gddr\d|wifi\d|\d)$")
+# Words that describe the kind of product rather than name it, left out when a name is needed to tell parts apart.
+_DESC = frozenset("""cpu gpu air cooler cooling liquid fan fans case cabinet chassis tower mid full atx matx itx eatx micro mini gaming gamer
+    wireless wired bluetooth usb black white red blue grey gray silver pink green purple yellow orange rgb argb led mouse mice keyboard
+    mechanical optical headset headphone headphones earphones earbuds mic microphone speaker speakers computer desktop laptop monitor
+    edition series new original pack combo set kit cable adapter portable external internal solid state drive ssd hdd hard disk memory ram
+    power supply psu modular fully semi bronze gold platinum titanium rated certified processor motherboard card graphics thermal paste
+    compound grease chair office ergonomic adjustable heatsink heat sink single dual stand cover dust protective premium high quality
+    compatible support supports universal multi purpose type pad mat large extended size inch display screen gamepad controller console
+    accessories accessory wifi router network udimm dimm sodimm nvme sata gen light dark""".split())
+# Sizes that read like model numbers: fan and radiator millimetres, screen lines.
+_SIZE_NUMBERS = frozenset(["120", "140", "240", "280", "360", "420", "480", "720", "1080", "1440", "2160"])
+
+
+def _vague_key(key, branded):
+    """True when nothing in the key names a model: no part like "rm750" or "x870", and no bare number with a known brand."""
+    for t in str(key or "").split("-"):
+        if not t or _VAGUE.match(t):
+            continue
+        if re.search(r"[a-z]", t) and re.search(r"\d", t):
+            return False
+        if re.fullmatch(r"\d{3,5}", t) and t not in _SIZE_NUMBERS and (branded or len(t) >= 4):
+            return False
+    return True
+
+
+def _name_words(title, brand, key=""):
+    """Up to three words that name the product ("assassin", "kryonaut"), sorted so word order between stores does not matter.
+    Part codes are left out: one store prints them and the next does not."""
+    skip = set(_NONALNUM.sub(" ", str(brand or "").lower()).split()) | set(str(key).split("-"))
+    out = []
+    for w in _NONALNUM.sub(" ", str(title or "").lower()).split():
+        if len(w) < 3 or w in KEY_STOP or w in _DESC or w in skip or re.search(r"\d", w) or w in out:
+            continue
+        out.append(w)
+        if len(out) == 3:
+            break
+    return sorted(out)
+
+
 def group_id(brand, mk, title, category):
     """Same part from any seller -> same id; different parts -> different ids."""
     key = str(mk or "")
     if len(re.sub(r"[^a-z0-9]", "", key, flags=re.I)) < 3:
         words = _NONALNUM.sub(" ", _DOTS.sub(" ", str(title or "").lower())).split(" ")
         key = "-".join([x for x in words if len(x) >= 3 and x not in KEY_STOP][:6])
+    elif _vague_key(key, str(brand or "Generic") != "Generic"):
+        # "120mm" or "pro" alone would put every brand's 120 mm cooler or "Pro" keyboard on one page.
+        key = "-".join([key] + _name_words(title, brand, key))
     base = _NONALNUM.sub("-", (str(category or "") + "-" + str(brand or "") + "-" + key).lower()).strip("-")
     clean = re.sub(r"-?generic-?", "-", base, count=1).strip("-")
     return clean or _NONALNUM.sub("-", str(title or "").lower()).strip("-")[:48]
 
 
-def recategorize(title, category, gid):
+def recategorize(title, category, gid, brand=None):
     """Category and group id for a stored offer under the current rules: None when it is not a PC product any more.
-    Only the category part of the id changes ("motherboard-..." to "desktop-pc-..."), so the rest stays as it was made."""
+    Usually only the category part of the id changes ("motherboard-..." to "desktop-pc-..."), so the rest stays as it was
+    made. An id built from a vague key ("120mm", "pro") is made again, so unrelated parts stop sharing one page."""
     new = type_of(title)
     if new == "Other":
         return None
+    if brand is not None:
+        b = "Generic" if not brand or brand in _LATE_NAMES else brand
+        mk = model_key(title)
+        if len(re.sub(r"[^a-z0-9]", "", mk)) >= 3 and _vague_key(mk, b != "Generic"):
+            fresh = group_id(b, mk, title, new)
+            if fresh != gid:
+                return new, fresh
     if new == category:
         return category, gid
     old_prefix = _NONALNUM.sub("-", str(category or "").lower()).strip("-")
@@ -481,6 +550,7 @@ def canonical_url(url):
 
 
 _LATE_BRANDS = (("EVM", "EVM"), ("CONSISTENT", "Consistent"), ("CONSISTEN", "Consistent"), ("SIMMTRONICS", "Simmtronics"), ("FRONTECH", "Frontech"), ("ZEBRONICS", "Zebronics"))
+_LATE_NAMES = frozenset(name for _, name in _LATE_BRANDS)
 
 
 def _late_brand(title):

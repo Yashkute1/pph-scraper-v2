@@ -62,8 +62,8 @@ def test_output_shape():
     assert (n["store"], n["price"], n["mrp"], n["category"], n["in_stock"], n["url"]) == ("elitehubs", 12999, 16999, "Processor/CPU", True, "https://a.test/p")
 
 
-def test_late_brand_names_the_part_but_keeps_the_group_id():
+def test_late_brand_names_the_part_and_keeps_it_apart_from_other_2tb_drives():
     from pph.normalize import normalize
     o = normalize({"title": "EVM 2TB M.2 NVMe Internal SSD", "price": "29900", "url": "https://x.test/a"}, "mdcomputers")
     assert o["brand"] == "EVM"
-    assert "evm" not in o["group_id"]
+    assert o["group_id"] == "ssd-2tb-evm"
