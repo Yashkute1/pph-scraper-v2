@@ -27,7 +27,7 @@ def db():
 
 
 def o(store, n, price=1000, in_stock=True, gid=None):
-    return {"store": store, "url": f"https://{store}.test/p/{n}", "title": f"Part number {n} 1TB SSD", "price": price, "mrp": price,
+    return {"store": store, "url": f"https://{store}.test/p/{n}", "title": f"Part number {n} PN{n}X 1TB SSD", "price": price, "mrp": price,
             "in_stock": in_stock, "image": "", "brand": "MSI", "category": "SSD", "model_key": str(n),
             "group_id": gid or f"ssd-msi-{n}", "specs": {"capacity": "1TB"}}
 

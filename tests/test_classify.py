@@ -73,3 +73,48 @@ def test_recategorize_swaps_only_the_category_part_of_the_id():
     assert recategorize(pc, "Motherboard", "motherboard-chist-5600-b450") == ("Desktop PC", "desktop-pc-chist-5600-b450")
     assert recategorize("MSI B550M-A Pro Motherboard", "Motherboard", "motherboard-msi-b550m") == ("Motherboard", "motherboard-msi-b550m")
     assert recategorize("flyx E88 Pro 4K Drone DDR2 2 GB NVIDIA Chipset 0 bit 0 MHz Graphics Card", "Motherboard", "x") is None
+
+
+def _gid(title, store="amazon"):
+    from pph.normalize import normalize
+    o = normalize({"title": title, "price": "2999", "url": "https://x.test/" + title[:10]}, store)
+    return o and o["group_id"]
+
+
+@pytest.mark.parametrize("a,b", [
+    # Real listings that shared one product page because their only model-like words were sizes or "pro".
+    ("DEEPCOOL ASSASSIN IV 120MM CPU AIR COOLER", "DEEPCOOL Gamma Archer 120mm Single Tower CPU Air Cooler"),
+    ("Enter WIRED MECHANICAL KEYBOARD PHOENIX PRO WITH RGB", "ROCCAT Vulcan TKL Pro PC Gaming Keyboard, Linear Switches"),
+    ("Hogwarts Legacy | Standard Edition| PlayStation 5 (PS5) 2023", "Sonic Frontiers PS5 Game CD | Sonic Frontiers PlayStation 5"),
+    ("Kingston Dual Portable 1TB USB 3.2 Gen 2 SSD", "SANDISK 1TB EXTREME PORTABLE SSD"),
+    ("CORSAIR Dominator Platinum 16GB (8GB x 2) 3200MHz DDR4 RAM", "Corsair Vengeance RGB RS 16GB (2 x 8GB) 3200MHz DDR4 RAM"),
+    ("Dyazo Plus Transparent Wireless Mouse", "LAPCARE Trendy Plus Ergonomic Optical Mouse"),
+])
+def test_vague_keys_no_longer_merge_different_products(a, b):
+    assert _gid(a) and _gid(b) and _gid(a) != _gid(b)
+
+
+@pytest.mark.parametrize("a,b", [
+    ("Seagate Expansion 4TB Desktop External Hard Drive", "SEAGATE EXPANSION 3.5 DESKTOP 4TB EXTERNAL HDD"),
+    ("MSI MAG Forge 130A AirFlow ARGB ATX Mid Tower Cabinet", "MSI Mag Forge 130A Airflow Auto RGB ATX Cabinet"),
+    ("Intel Core Ultra 7 265K Desktop Processor", "Intel Core Ultra 7 265K Processor"),
+    ("AMD Ryzen 5 3400G Processor with Radeon Vega 11 Graphics", "Amd Ryzen 5 3400G With Radeon Rx Vega 11 Graphics"),
+])
+def test_the_same_product_still_matches_across_stores(a, b):
+    assert _gid(a) == _gid(b, "flipkart")
+
+
+def test_a_bare_brand_is_not_a_product():
+    from pph.normalize import type_of
+    assert type_of("ZORBES") == "Other" and type_of("Case Club") == "Other"
+    assert type_of("Playseat Seatslider") != "Other" and type_of("Elden Ring") == "Games"
+    assert type_of("Mastering Rundll32.exe: A Comprehensive Guide to Windows System Management") == "Other"
+
+
+def test_rollup_regroups_an_offer_whose_id_was_vague():
+    from pph.normalize import recategorize
+    t = "DEEPCOOL ASSASSIN IV 120MM CPU AIR COOLER"
+    cat, gid = recategorize(t, "Fans & Cooling", "fans-cooling-deepcool-120mm", "Deepcool")
+    assert cat == "Fans & Cooling" and gid != "fans-cooling-deepcool-120mm" and "assassin" in gid
+    # a clear model number is left alone
+    assert recategorize("MSI B550M-A Pro Motherboard", "Motherboard", "motherboard-msi-b550m", "MSI") == ("Motherboard", "motherboard-msi-b550m")

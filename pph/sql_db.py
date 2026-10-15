@@ -251,11 +251,11 @@ def recategorize_offers(db, now):
     instead of store by store. Offers that are no longer PC products are removed. A part whose id changes keeps its
     old address working: the site sends it on to the new one."""
     with db.cursor() as cur:
-        cur.execute("SELECT id, title, category, group_id FROM offers")
+        cur.execute("SELECT id, title, category, group_id, brand FROM offers")
         rows = cur.fetchall()
         changed, gone, moved = [], [], {}
-        for oid, title, cat, gid in rows:
-            r = recategorize(title, cat, gid)
+        for oid, title, cat, gid, brand in rows:
+            r = recategorize(title, cat, gid, brand or "Generic")
             if r is None:
                 gone.append((oid,))
             elif r != (cat, gid):
