@@ -1,17 +1,17 @@
 # Scraper status
 
-Last run: 2026-10-17 05:24 UTC. 9 of 9 stores ok.
+Last run: 2026-10-17 11:42 UTC. 8 of 9 stores ok.
 
 | store | status | fetched | written | previous | seconds | note |
 |---|---|---|---|---|---|---|
-| elitehubs | ok | 13211 | 13211 | 13211 | 146 |  |
-| vishalperipherals | ok | 8408 | 8408 | 8408 | 96 |  |
-| pcstudio | ok | 2382 | 2382 | 2382 | 76 |  |
-| primeabgb | ok | 3518 | 3518 | 3518 | 429 |  |
-| vedantcomputers | ok | 490 | 490 | 491 | 196 |  |
-| theitdepot | ok | 2277 | 2277 | 2277 | 624 |  |
-| mdcomputers | ok | 2024 | 2024 | 2043 | 270 |  |
-| flipkart | ok | 6249 | 6249 | 8028 | 658 |  |
-| amazon | ok | 5018 | 5018 | 6393 | 3000 |  |
+| elitehubs | ok | 13212 | 13212 | 13211 | 147 |  |
+| vishalperipherals | ok | 8432 | 8432 | 8408 | 86 |  |
+| pcstudio | ok | 2382 | 2382 | 2382 | 83 |  |
+| primeabgb | ok | 3516 | 3516 | 3518 | 521 |  |
+| vedantcomputers | failed | 0 | 0 | 491 | 0 | no products found |
+| theitdepot | ok | 2274 | 2274 | 2277 | 658 |  |
+| mdcomputers | ok | 2019 | 2019 | 2034 | 264 |  |
+| flipkart | ok | 6175 | 6175 | 8181 | 665 |  |
+| amazon | ok | 5048 | 5048 | 6405 | 3102 |  |
 
-Products: 45972, database 200.1 MB
+Products: 46118, database 199.1 MB
