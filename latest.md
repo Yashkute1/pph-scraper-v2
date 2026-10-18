@@ -1,17 +1,17 @@
 # Scraper status
 
-Last run: 2026-10-18 16:50 UTC. 8 of 9 stores ok.
+Last run: 2026-10-18 21:40 UTC. 9 of 9 stores ok.
 
 | store | status | fetched | written | previous | seconds | note |
 |---|---|---|---|---|---|---|
-| elitehubs | ok | 13212 | 13212 | 13212 | 145 |  |
-| vishalperipherals | ok | 8435 | 8435 | 8435 | 106 |  |
-| pcstudio | ok | 2383 | 2383 | 2383 | 79 |  |
-| primeabgb | ok | 3515 | 3515 | 3515 | 453 |  |
-| vedantcomputers | ok | 487 | 487 | 488 | 195 |  |
-| theitdepot | ok | 2275 | 2275 | 2275 | 614 |  |
-| mdcomputers | failed | 2010 | 0 | 0 | 247 | database: OperationalError |
-| flipkart | ok | 6349 | 6349 | 8097 | 680 |  |
-| amazon | ok | 5054 | 5054 | 6000 | 3207 |  |
+| elitehubs | ok | 13212 | 13212 | 13212 | 158 |  |
+| vishalperipherals | ok | 8435 | 8435 | 8435 | 97 |  |
+| pcstudio | ok | 2383 | 2383 | 2383 | 70 |  |
+| primeabgb | ok | 3515 | 3515 | 3515 | 412 |  |
+| vedantcomputers | ok | 486 | 486 | 488 | 190 |  |
+| theitdepot | ok | 2275 | 2275 | 2275 | 628 |  |
+| mdcomputers | ok | 2008 | 2008 | 2022 | 241 |  |
+| flipkart | ok | 6022 | 6022 | 7809 | 661 |  |
+| amazon | ok | 5038 | 5038 | 5998 | 3036 |  |
 
-Products: 45859, database 200.1 MB
+Products: 45269, database 188.0 MB
