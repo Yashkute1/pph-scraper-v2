@@ -56,6 +56,17 @@ STORES = {
         "price": ["span.price .ins .amount::alltext", "span.price .amount::alltext"], "mrp": ["span.price .del .amount::alltext"],
         "image": "a.product-image-link img", "oos": ".out-of-stock ::text, .product-label ::text", "page_param": "page",
     },
+    "computech": {
+        "adapter": "html_listing", "mode": "http", "base": "https://computechstore.in", "delay": (1, 2), "max_pages": 40,
+        # graphics-card first: the first category must exist, or the run fails loudly as a layout change
+        "start_urls": _cats("https://computechstore.in/product-category/", [
+            "graphics-card/", "processor/", "motherboard/", "memory-ram/", "storage/", "ssd/", "power-supply/", "cabinet-case/",
+            "cooling-system/", "monitor/", "monitors/", "keyboards/", "mouse/", "headphones/", "laptop/", "game-controllers/",
+            "accessories/mouse-pads/"]),
+        "card": "#product-grid-container > div", "title": ["h3::text"], "link": ['a[href*="/product/"]::attr(href)'],
+        "price": ["div.items-baseline span:not(.line-through)::text"], "mrp": ["div.items-baseline span.line-through::text"],
+        "image": "img", "oos": "card", "page_param": "page",
+    },
     "flipkart": {
         "adapter": "html_listing", "mode": "http", "base": "https://www.flipkart.com", "delay": (1, 2), "max_pages": 10,
         "start_urls": ["https://www.flipkart.com/search?q=" + quote_plus(t) for t in SEARCH_TERMS],
