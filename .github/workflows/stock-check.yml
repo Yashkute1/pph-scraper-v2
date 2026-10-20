@@ -7,6 +7,9 @@ on:
       stores:
         description: 'Stores to check (space separated); empty = all'
         default: ''
+      urls:
+        description: 'Optional: product page URLs to inspect (space separated); needs exactly one store above'
+        default: ''
 
 permissions:
   contents: read
@@ -34,4 +37,5 @@ jobs:
         if: inputs.stores == '' || contains(format(' {0} ', inputs.stores), format(' {0} ', matrix.store))
         env:
           MYSQL_URL: ${{ secrets.MYSQL_URL }}
-        run: python -m tools.stock_check ${{ matrix.store }}
+          URLS: ${{ inputs.urls }}
+        run: python -m tools.stock_check ${{ matrix.store }} $URLS
