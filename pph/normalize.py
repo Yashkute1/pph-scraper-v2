@@ -197,7 +197,7 @@ def _audit_fixes(t):
         return 'Thermal Paste'
     if _s(r"thrustmaster|hotas|flight (yoke|stick|throttle|pedals?)|rudder pedals|game ?stick\b|retro (game|gaming) console|tca (officer|captain)", t) and not _s(r"cover|stand for|mount for|headset|headphone", t):
         return 'Gaming Accessories'
-    if _s(r"hdmi (splitter|switch|cable|extender)|displayport cable|\bxlr (cable|cble)|\bdp cable|cable (set|combs?)|sleeved (extension )?cable|extension cable kit", t) \
+    if _s(r"hdmi (splitter|switch|cable|extender)|displayport cable|^\W*\S+( \S+)? xlr (cable|cble)|\bdp cable|cable (set|combs?)|sleeved (extension )?cable|extension cable kit", t) \
             and not _s(r"monitor\b.{0,40}\d{2,3}\s?hz|\bcore\s?i\d|\bi[3579]-\d{3,5}|ryzen|\d+\s?gb (ddr\d )?ram", t):
         return 'Accessories'
     if _s(r"pro-?blade|ssd mag\b", t):
@@ -232,7 +232,8 @@ def _audit_fixes(t):
         if _s(r"\bfan\b|cooler", head): return 'Fans & Cooling'
         return 'Accessories' if _s(r"keyboard|cleaning|brush", head) else 'Other'
     # parts and add-ons sold for a product, not the product
-    if _s(r"anti[- ]?sag (bracket|support|stand)|vertical (gpu |graphics card )?(bracket|mount)( kit)?|gpu (support )?(holder|bracket|stand)|graphics card (holder|support bracket|bracket)", t) \
+    if _s(r"anti[- ]?sag (bracket|support|stand)|vertical (gpu |graphics card )?(bracket|mount)( kit)?|gpu (support )?(holder|bracket|stand)|graphics card (holder|support bracket|bracket)|"
+          r"upright gpu kit|\bnvlink\b|\bsli bridge|gpu bridge", t) \
             and not _s(r"gddr\d|\d+\s?gb\b.{0,20}graphics card|motherboard|tower|cabinet|\bcase\b|chassis", t):
         return 'Accessories'
     if _s(r"hard disk skin|hdd skin|(sata|sas) (data )?cable|hdd cable|ssd (adapter|bracket|mounting)|m\.?2 (nvme )?(adapter|converter)|nvme (adapter|converter)|"

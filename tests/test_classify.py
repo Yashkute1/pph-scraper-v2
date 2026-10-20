@@ -251,3 +251,17 @@ def test_third_sweep(title, want):
 ])
 def test_fourth_sweep(title, want):
     assert type_of(title) == want
+
+
+@pytest.mark.parametrize("title", [
+    "LIAN LI O11D EVO Upright GPU Kit ( Black )",
+    "MSI GeForce RTX NVLink GPU Bridge",
+    "PNY NVIDIA NVLINK 2-SLOT BRIDGE FOR RTX A6000 A5000 A100 RTXA6000NVLINK-KIT (2-SLOT)",
+])
+def test_gpu_add_ons_are_accessories(title):
+    assert type_of(title) == "Accessories"
+
+
+def test_mic_with_xlr_cable_is_a_mic():
+    assert type_of("Urban Infotech BM-800 Condenser Mic with XLR Cable Shock Mount and Foam Cap Microphone") == "Microphone"
+    assert type_of("HYPERX XLR Cable Male-to-Female, 3 Pin, 10-Foot ( Black )") == "Accessories"
