@@ -134,7 +134,7 @@ def _console(t):
     The console must lead the title, and accessory words only count before a bundle marker ("& charging station")."""
     head = re.sub(r"^\W*(new |latest |original |genuine |sony |microsoft |playstation sony |gaming console:\s*)+", "", t.strip())
     head = re.sub(r"\(?games? not included\)?", " ", head)
-    bare = re.fullmatch(r"(nintendo switch( 2| oled| lite)?|playstation ?5( slim| pro)?|ps ?5( slim| pro)?|xbox series [xs])\W*", head)
+    bare = re.fullmatch(r"(nintendo switch( 2| oled| lite)?|playstation ?5( slim| pro)?|ps ?5( slim| pro)?|xbox series [xs])\W*", re.sub(r"\([^)]*\)", " ", head).strip())
     if bare:
         return 'Nintendo' if 'switch' in head else 'Xbox' if 'xbox' in head else 'PlayStation'
     cut = re.search(r"\s(&|\+|with|bundle|combo)\s", head)
@@ -177,15 +177,48 @@ _TOWER = r"\b(mid|full|mini|micro)[- ]?tower\b|\batx (mid )?(tower|case|cabinet)
 
 def _audit_fixes(t):
     """Listings the October 2026 live audit found in the wrong place; checked before the general rules."""
-    if _s(r"degreaser|stain remover|kitchen chimney|kitchen organi[sz]er|airtight|hair straightener|straightener comb|coat hanger|lens cleaning wipes", t):
+    if _s(r"degreaser|stain remover|kitchen chimney|kitchen organi[sz]er|airtight|hair straightener|straightener comb|coat hanger|lens cleaning wipes|"
+          r"badminton|cricut|vinyl permanent|doorbell|\b(dash|desk) ?(&|and)? ?(lap|desk)? ?.{0,10}usb .{0,20}fan\b|usb (dual head |twin ?breeze |rotatable )?fan\b.{0,40}(dash|desk|lap)", t):
         return 'Other'
+    # a monitor whose port list says "Headphone" or "Speaker" is still a monitor
+    if _s(r"^.{0,60}\b(gaming |curved |ips |oled |4k |business )?monitor\b", t) and _s(r"\d{2}(\.\d)?\s?(inch|\"|cm)|\d{2,3}\s?hz", t) \
+            and not _s(r"monitor (stand|arm|mount|light|riser|cable|adapter|bracket)|stand for|light ?bar|mounting|webcam|\bmic\b|microphone|headset with|"
+                  r"pc set|computer set|desktop (pc|computer)|gaming pc|\bcore\s?i\d|\bi[3579][- ]\d{3,5}|\bryzen\b|\d+\s?gb ram|\bcpu\b", t):
+        return 'Monitor'
+    # panels named by size and panel type only ("Samsung Odyssey G5 ... (32 inch) Curved ... VA Panel ... Ports-HDMI,DP,Headphone")
+    if _s(r"\d{2}(\.\d)?\s?inch\)?.{0,60}\b(va|ips|tn) panel\b", t) and not _s(r"laptop|notebook|\bcore\s?i\d|ryzen|\btv\b|television|tablet|projector", t):
+        return 'Monitor'
+    if _s(r"\b(rode|shure|audio-technica|blue yeti|hyperx quadcast|fifine|maono|boya)\b.{0,60}microphone|^.{0,50}\b(usb|condenser|studio|podcast|gaming|dynamic) (mic|microphone)\b", t) \
+            and not _s(r"(mic|microphone) (stand|arm|holder|cable|pop filter|windscreen|foam|cover|clip|mount)\b|stand for (mic|microphone)|headset|headphone|earphone|webcam|speaker|\bcable\b", t[:60]):
+        return 'Microphone'
+    if _s(r"keyboard switches|(linear|tactile|clicky) switches|\bkeycaps?\b(?!.{0,20}keyboard)", t) and not _s(r"mechanical keyboard|gaming keyboard|\bkeyboard\b.{0,20}(with|rgb)", t):
+        return 'Keyboard'
+    if _s(r"liquid metal|thermal conductivity paste|conductonaut", t) and not _s(r"cooler|\bfan\b|graphics card|\bgpu\b|\brtx\b|laptop", t):
+        return 'Thermal Paste'
+    if _s(r"thrustmaster|hotas|flight (yoke|stick|throttle|pedals?)|rudder pedals|game ?stick\b|retro (game|gaming) console|tca (officer|captain)", t) and not _s(r"cover|stand for|mount for|headset|headphone", t):
+        return 'Gaming Accessories'
+    if _s(r"hdmi (splitter|switch|cable|extender)|displayport cable|\bxlr (cable|cble)|\bdp cable|cable (set|combs?)|sleeved (extension )?cable|extension cable kit", t) \
+            and not _s(r"monitor\b.{0,40}\d{2,3}\s?hz|\bcore\s?i\d|\bi[3579]-\d{3,5}|ryzen|\d+\s?gb (ddr\d )?ram", t):
+        return 'Accessories'
+    if _s(r"pro-?blade|ssd mag\b", t):
+        return 'SSD'
+    if _s(r"chair mat\b|mat for (rolling|office) chairs?", t):
+        return 'Accessories'
+    # a desktop SMPS ("SMPS 200W PS3 Power Supply | 20+4 Pin") is still a power supply, cord included or not
+    if _s(r"\b(smps|power supply)\b", t[:80]) and _s(r"20\s?\+\s?4 ?pin|\batx\b", t) and not _s(r"cable|extension|adapter|convert|tester|bracket|cabinet|\bcase\b|tower|chassis", t[:80]):
+        return 'Power Supply'
+    if _s(r"power cord|power supply cable", t) and not _s(r"\bups\b.{0,20}(va|watt)|\d{3,4}\s?va|ps[345]|playstation|xbox|nintendo", t):
+        return 'Accessories'
+    # Flipkart desktop listings read like laptops: "(8 GB DDR3/500 GB/Windows 10 Pro/1 GB/18.5 Inch Screen"
+    if _s(r"\b(1[89]|2[0-9])(\.\d)? inch screen\b", t) and not _s(r"laptop|notebook|\bthin and light\b|tablet", t):
+        return 'Desktop PC'
     # Flipkart's "... 200 Watts Computer PSU with 2 SATA Cables" ending also lands on LED controllers, mains cords and CCTV
     # adapters; only a head that is itself a PC power supply keeps it in power supplies.
     m = re.search(r"\d+ watts (computer |gaming |server )?psu with \d+ sata cables", t, A)
     if m:
         head = t[:m.start()]
         if _s(r"\batx\b|80\s?\+|80 plus|bronze|gold|platinum|modular", head): return 'Power Supply'
-        if _s(r"(power|mains|ac) (cable|cord|lead)|cable cord|power cable", head): return 'Accessories'
+        if _s(r"(power|mains|ac) (cable|cord|lead)|cable cord|power cable|vga cable|hdmi cable|video cable", head): return 'Accessories'
         if _s(r"\bled\b|cctv|dimmer|din rail|\bvdc\b|\d+\s?v(olt|alt)?s?\b|\d+(\.\d+)?\s?a(mp)?s?\b|adapt[eo]r|charger|transformer|controller|strip|rainproof|"
               r"panel mount|regulated|mean ?well|\blrs-|\bmdr-|converter|dc[- ]?dc|channel", head) \
                 and not _s(r"\batx\b|80\s?\+|80 plus|bronze|gold|platinum|modular", head):
@@ -205,7 +238,8 @@ def _audit_fixes(t):
     if _s(r"hard disk skin|hdd skin|(sata|sas) (data )?cable|hdd cable|ssd (adapter|bracket|mounting)|m\.?2 (nvme )?(adapter|converter)|nvme (adapter|converter)|"
           r"(ssd|hdd|nvme) (dock|enclosure|external case)|external case.{0,20}(hdd|ssd)|2\.5 to 3\.5", t) and not _s(r"\b\d+\s?(gb|tb)\b.{0,30}(internal|external) (ssd|hard)|portable ssd|external hard drive\b(?!.{0,10}(case|enclosure))", t):
         return 'Accessories'
-    if _s(r"chair cover|gas lift (cylinder|replacement)|replacement.{0,20}gas (lift|cylinder)|chair (cylinder|wheels?|castors?)|armrest pads?|seat (cushion|slipcover)|cushion set", t) and not _s(r"^\W*\S+( \S+)? (gaming|office|ergonomic) chair\b(?!.{0,6}cover)", t):
+    if _s(r"chair cover|gas lift (cylinder|replacement)|replacement.{0,20}gas (lift|cylinder)|chair (cylinder|wheels?|castors?)|armrest pads?|seat (cushion|slipcover)|cushion set", t) and not _s(r"^\W*\S+( \S+)? (gaming|office|ergonomic) chair\b(?!.{0,6}cover)", t) \
+            and not _s(r"lumbar support|big and tall|executive (office )?chair|bis certified|\d+ years? warranty|tilt lock", t):
         return 'Accessories'
     if _s(r"screen guard|tempered glass|screen protector", t) and _s(r"earbud|airpods|watch|phone|mobile|tab\b|tablet", t):
         return 'Other'
@@ -251,7 +285,7 @@ def _audit_fixes(t):
           r"\d+\s?v(olts?)? \d+(\.\d+)?\s?a(mps?)?\b.{0,40}(dc )?(power )?(adapter|adaptor)|dc power (adapter|adaptor)|"
           r"(smps|power supply|adapter|adaptor|led driver).{0,60}(\b\d+(\.\d+)?\s?v\b[ ,]{0,3}\d+(\.\d+)?\s?a(mp)?\b|\b\d+(\.\d+)?\s?a(mp)?\b[ ,]{0,3}\d+(\.\d+)?\s?v\b|\d+v,\s?\d+v)|"
           r"(\b\d+(\.\d+)?\s?v\b[ ,]{0,3}\d+(\.\d+)?\s?a(mp)?\b|\b\d+(\.\d+)?\s?a(mp)?\b[ ,]{0,3}\d+(\.\d+)?\s?v\b).{0,60}(smps|power supply|adapter|adaptor|led driver)|"
-          r"(smps|power supply).{0,40}(cctv|led strip|ro water|purifier)|led driver", t) and not _s(r"cooling fan|\bfan\b.{0,10}cooler|\bups\b|battery backup", t) \
+          r"(smps|power supply).{0,40}(cctv|led strip|ro water|purifier)|led driver|\d+v\s?\d+\s?amp|\b\d+\s?ch(annel)? smps", t) and not _s(r"cooling fan|\bfan\b.{0,10}cooler|\bups\b|battery backup", t) \
             and not _s(r"\batx\b|\b[3-9]\d0\s?w(att)?\b|\b1\d{3}\s?w(att)?\b|80\s?\+|80 plus|modular|pcie|pci-e|6\+2|4\+4|bronze|gold", t):
         return 'Other'
     if _s(r"thermal (silicone |silicon |conductive |cunductive )?(pads?|putty)\b|conductive pad|\btg putty\b|fever patch", t) and not _s(r"laptop stand", t):
