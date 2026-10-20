@@ -179,6 +179,12 @@ def _audit_fixes(t):
     """Listings the October 2026 live audit found in the wrong place; checked before the general rules."""
     if _s(r"degreaser|stain remover|kitchen chimney", t):
         return 'Other'
+    # workstation and bare graphics cards ("NVIDIA RTX PRO 6000 Blackwell Workstation Edition 96GB") are not PCs
+    if not _FK_GPU.search(t) and _s(r"graphics? card|\bgpu\b|video card", t) and _s(r"gddr\d|\b\d{1,2}\s?gb\b|quadro|firepro|rtx (pro|a\d{3,4})", t) \
+            and not _s(r"\b\d+\s?gb\s?(ram|ddr\d)|\bram\b|\bssd\b|\bhdd\b|windows|win ?1[01]|mini pc|\bnuc\b|gaming pc|desktop pc\s*(\||,|with)|laptop|notebook|motherboard|cooler|fan\b.{0,10}cool|holder|bracket\b(?! included)|riser|cable|\bstand\b|support|converter", t):
+        return 'Graphics Card'
+    if _s(r"desktop pc processor|\bprocessor\b.{0,20}\b\d+ core cpu", t) and _s(_CPU, t[:40]) and not _s(_RAM_SIZE, t):
+        return 'Processor/CPU'
     # Flipkart's "... Cabinet with USB 2.0 and USB 3.0 Ports Compatible with Computer" ending on bins, pens and organisers
     m = re.search(r"cabinet with usb 2\.?\s?0( and usb 3\.?\s?0)? ports compatible with (computer|gaming console)", t, A)
     if m:
