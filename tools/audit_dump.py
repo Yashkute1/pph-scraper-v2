@@ -21,6 +21,14 @@ def main():
         for r in cur.fetchall():
             f.write("\t".join(str(x) for x in r) + "\n"); n += 1
     print(n, "offers")
+    with db.cursor() as cur, open(out / "products.tsv", "w", encoding="utf-8") as f:
+        cur.execute("SELECT group_id, category_slug, brand, best_price, any_stock, store_count, REPLACE(REPLACE(title, '\t', ' '), '\n', ' ') "
+                    "FROM products ORDER BY category_slug, group_id")
+        f.write("group_id\tcategory_slug\tbrand\tbest_price\tany_stock\tstore_count\ttitle\n")
+        n = 0
+        for r in cur.fetchall():
+            f.write("\t".join(str(x) for x in r) + "\n"); n += 1
+    print(n, "products")
 
 
 if __name__ == "__main__":
