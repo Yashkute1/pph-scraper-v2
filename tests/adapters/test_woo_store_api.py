@@ -37,3 +37,10 @@ def test_empty_or_non_json_first_page_raises():
     from pph.adapters.common import EmptyListingError
     with pytest.raises(EmptyListingError): list(iter_offers({"base": B}, FakeFetcher({}, default="[]")))
     with pytest.raises(EmptyListingError): list(iter_offers({"base": B}, FakeFetcher({}, default="<html>x</html>")))
+
+
+def test_not_purchasable_counts_as_out_of_stock():
+    item = dict(p("Razer Kiyo V2 X", "899900", "999900"), is_purchasable=False)
+    f = FakeFetcher({U % 1: json.dumps([item, p("Plain", "100", "100")])}, default="[]")
+    a, b = list(iter_offers({"base": B}, f))
+    assert (a["in_stock"], b["in_stock"]) == (False, True)

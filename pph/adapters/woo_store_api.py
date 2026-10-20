@@ -32,6 +32,8 @@ def iter_offers(cfg, fetcher):
             yield {"title": html.unescape(p.get("name") or ""), "price": price,
                    "mrp": _money(pr.get("regular_price"), pr.get("currency_minor_unit")),
                    "url": p["permalink"], "image": (images[0].get("src") if images else "") or "",
-                   "in_stock": bool(p.get("is_in_stock", True)), "sku": p.get("sku") or ""}
+                   # a product that cannot be added to the cart is not for sale, whatever its stock flag says
+                   "in_stock": bool(p.get("is_in_stock", True)) and p.get("is_purchasable", True) is not False,
+                   "sku": p.get("sku") or ""}
     if count == 0:
         raise EmptyListingError(tpl % 1)
