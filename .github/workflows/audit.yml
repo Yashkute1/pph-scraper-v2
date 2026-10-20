@@ -27,9 +27,9 @@ jobs:
         run: |
           git config user.name "pph-bot"
           git config user.email "pph-bot@users.noreply.github.com"
-          cp audit/offers.tsv /tmp/offers.tsv
+          cp audit/offers.tsv audit/products.tsv /tmp/
           git checkout --orphan audit-tmp && git rm -rfq .
-          cp /tmp/offers.tsv offers.tsv
-          git add offers.tsv
+          cp /tmp/offers.tsv /tmp/products.tsv .
+          git add offers.tsv products.tsv
           git commit -qm "audit: offers [skip ci]"
           git push -f origin HEAD:audit
