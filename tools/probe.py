@@ -24,6 +24,15 @@ def main(urls):
         title = re.search(r"<title[^>]*>(.*?)</title>", t, re.S | re.I)
         print(f"\n## {url}\n  status={p.status} bytes={len(t)} title={title.group(1).strip()[:100] if title else '-'}")
         print("  hints:", [k for k, rx in HINTS.items() if re.search(rx, t)])
+        if "TEXT" in __import__("os").environ:
+            body = re.sub(r"<script.*?</script>|<style.*?</style>", " ", t, flags=re.S | re.I)
+            heads = re.findall(r"<(h[1-4])[^>]*>(.*?)</\1>", body, re.S | re.I)
+            print("  headings:", [re.sub(r"<[^>]+>|\s+", " ", h[1]).strip()[:80] for h in heads][:60])
+            meta = re.findall(r'<meta[^>]+(?:name|property)="([^"]+)"[^>]+content="([^"]*)"', t)
+            print("  meta:", meta[:20])
+            txt = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body))
+            print("  text:", txt[:9000])
+            print("  scripts:", re.findall(r'<script[^>]+src="([^"]+)"', t)[:15])
         if t.lstrip().startswith(("{", "[", "<?xml")):
             print("  json:", t[:600].replace("\n", " "))
             continue
