@@ -1,0 +1,39 @@
+"""Probe store URLs from a runner: status, platform hints, page title, and card-like elements. Read-only.
+
+    python -m tools.probe URL [URL ...]"""
+import re
+import sys
+
+from pph.fetch import Fetcher_
+
+HINTS = {"shopify": r"cdn\.shopify|Shopify\.theme", "woocommerce": r"woocommerce|wp-content", "magento": r"Magento|mage/",
+         "opencart": r"route=product|catalog/view/theme", "journal": r"journal3|journal-", "next.js": r"__NEXT_DATA__",
+         "json-ld product": r'"@type"\s*:\s*"Product"'}
+
+
+def main(urls):
+    f = Fetcher_("http", (1, 2))
+    for url in urls:
+        try:
+            p = f.get(url)
+        except Exception as e:  # noqa: BLE001 - a report
+            print(f"\n## {url}\n  {type(e).__name__}: {e}")
+            continue
+        t = p.text
+        title = re.search(r"<title[^>]*>(.*?)</title>", t, re.S | re.I)
+        print(f"\n## {url}\n  status={p.status} bytes={len(t)} title={title.group(1).strip()[:100] if title else '-'}")
+        print("  hints:", [k for k, rx in HINTS.items() if re.search(rx, t)])
+        if t.lstrip().startswith(("{", "[")):
+            print("  json:", t[:600].replace("\n", " "))
+            continue
+        classes = re.findall(r'class="([^"]*(?:product|item|card)[^"]*)"', t)
+        from collections import Counter
+        print("  common classes:", Counter(classes).most_common(12))
+        for m in list(re.finditer(r'href="([^"]+)"', t))[:0]:
+            pass
+        links = sorted({m for m in re.findall(r'href="(https?://[^"]*computech[^"]*|/[^"]+)"', t) if any(k in m for k in ("product", "/p/", "category", "collections"))})
+        print("  sample links:", links[:15])
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
