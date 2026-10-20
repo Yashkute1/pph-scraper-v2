@@ -109,6 +109,30 @@ def woo_api(store, cfg, fetcher):
         print(f"  == {store} api {v:4} x in_stock={k[0]} purchasable={k[1]} class={k[2]!r} text={k[3]!r}")
 
 
+def inspect(store, urls, search=None):
+    """Print every stock signal for given product pages, and the full text of matching search cards."""
+    cfg = STORES[store]
+    fetcher = Fetcher_(cfg["mode"], (1, 2))
+    for url in urls:
+        page = fetcher.get(url)
+        _, _, ld = _from_detail(page)
+        text = _text(page.text)
+        print(f"\n## {url}\n  status={page.status} ld={ld} buy={len(_BUY.findall(text))}")
+        for m in re.finditer(r"sold out|currently unavailable|coming soon|notify me|out of stock|add to cart|buy now|pre-?order|"
+                             r"temporarily unavailable|unavailable", text, re.I):
+            print(f"    …{text[max(0, m.start() - 60):m.end() + 40]}…")
+        for m in re.finditer(r'"(availability|availabilityStatus|stockStatus|inStock|isAvailable|buyable|sellable)"\s*:\s*("?[^,}]{0,40})', page.text):
+            print(f"    json {m.group(1)}={m.group(2)}")
+    if search:
+        page = fetcher.get(search)
+        pids = {re.search(r"pid=(\w+)", u).group(1) for u in urls if "pid=" in u}
+        for el in page.css(cfg["card"]):
+            t = el.get_all_text(separator=" | ", strip=True)
+            if el.attrib.get("data-id") in pids or "PS5" in t:
+                o = _card(el, cfg, page.url)
+                print(f"\n  card id={el.attrib.get('data-id')} flag={o and o['in_stock']}: {t[:400]}")
+
+
 def main(stores):
     db = sql_db.connect(os.environ["MYSQL_URL"])
     for store in stores or list(STORES):
@@ -122,4 +146,9 @@ def main(stores):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    if len(sys.argv) > 2 and sys.argv[2].startswith("http"):
+        args = sys.argv[2:]
+        search = next((a for a in args if "/search?" in a), None)
+        inspect(sys.argv[1], [a for a in args if a != search], search)
+    else:
+        main(sys.argv[1:])
