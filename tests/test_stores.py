@@ -1,10 +1,10 @@
 from pph.stores import STORES
 from pph.adapters import ADAPTERS
 
-NAMES = ["elitehubs", "vishalperipherals", "pcstudio", "primeabgb", "vedantcomputers", "mdcomputers", "theitdepot", "flipkart", "amazon"]
+NAMES = ["elitehubs", "vishalperipherals", "pcstudio", "primeabgb", "vedantcomputers", "mdcomputers", "theitdepot", "computech", "flipkart", "amazon"]
 
 
-def test_all_nine_stores_configured():
+def test_all_stores_configured():
     assert sorted(STORES) == sorted(NAMES)
 
 
