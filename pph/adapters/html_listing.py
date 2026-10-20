@@ -99,7 +99,9 @@ def _card(el, cfg, page_url):
     if mrp and price and parse_price(mrp) < parse_price(price):
         mrp = None                                  # some stores print a stale "old price" below the live one
     oos = cfg.get("oos")
-    in_stock = not (oos and _OOS.search(" ".join(el.css(oos).getall())))
+    # "card" = the whole card's text, for stores whose class names change with every release (Flipkart)
+    said = el.get_all_text(separator=" ", strip=True) if oos == "card" else " ".join(el.css(oos).getall()) if oos else ""
+    in_stock = not _OOS.search(said)
     return {"title": re.sub(r"\s+", " ", title), "price": price, "mrp": mrp, "url": urljoin(page_url, link),
             "image": _image(el, cfg.get("image"), page_url), "in_stock": in_stock, "sku": ""}
 

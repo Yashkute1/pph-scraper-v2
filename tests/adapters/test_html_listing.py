@@ -128,3 +128,13 @@ def test_one_blocked_category_is_skipped_but_fatal_block_propagates():
     assert [o["url"][-1] for o in iter_offers(cfg, f)] == ["1", "3"]
     f = Flaky({"https://s.test/c": pg(1)}, default=EMPTY); f.blocked, f.fatal = {"https://s.test/d"}, True
     with pytest.raises(BlockedError): list(iter_offers(cfg, f))
+
+
+def test_whole_card_text_marks_sold_out():
+    # Flipkart's search lists sold-out consoles with a price; only the card's own words say so
+    cfg = dict(CFG, oos="card")
+    html = ('<html><body><div class="card"><div>Currently unavailable</div><a class="t" href="/a">SONY PS5 Digital Astro Bot Bundle</a>'
+            '<span class="p">₹39,990</span></div><div class="card"><a class="t" href="/b">SONY PS5 Console 1 TB</a>'
+            '<span class="p">₹69,990</span></div></body></html>')
+    a, b = list(iter_offers(cfg, FakeFetcher({CFG["start_urls"][0]: html}, default=EMPTY)))
+    assert (a["in_stock"], b["in_stock"]) == (False, True)
