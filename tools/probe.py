@@ -2,6 +2,7 @@
 
     python -m tools.probe URL [URL ...]"""
 import re
+from collections import Counter
 import sys
 
 from pph.fetch import Fetcher_
@@ -23,14 +24,17 @@ def main(urls):
         title = re.search(r"<title[^>]*>(.*?)</title>", t, re.S | re.I)
         print(f"\n## {url}\n  status={p.status} bytes={len(t)} title={title.group(1).strip()[:100] if title else '-'}")
         print("  hints:", [k for k, rx in HINTS.items() if re.search(rx, t)])
-        if t.lstrip().startswith(("{", "[")):
+        if t.lstrip().startswith(("{", "[", "<?xml")):
             print("  json:", t[:600].replace("\n", " "))
             continue
         classes = re.findall(r'class="([^"]*(?:product|item|card)[^"]*)"', t)
-        from collections import Counter
         print("  common classes:", Counter(classes).most_common(12))
-        for m in list(re.finditer(r'href="([^"]+)"', t))[:0]:
-            pass
+        prods = [m for m in re.finditer(r'href="(/product/[^"]+|https?://[^"]+/product/[^"]+)"', t)]
+        print(f"  product links: {len(prods)} e.g. {[m.group(1) for m in prods[:3]]}")
+        for m in prods[:2]:
+            print("  --- html around a product link ---\n" + t[max(0, m.start() - 1500):m.start() + 2500])
+        print("  paging:", sorted(set(re.findall(r'href="([^"]*[?&]page=\d+[^"]*)"', t)))[:8])
+        print("  stock words:", Counter(w.lower() for w in re.findall(r"out of stock|in stock|sold out|notify me|add to cart|unavailable", t, re.I)))
         links = sorted({m for m in re.findall(r'href="(https?://[^"]*computech[^"]*|/[^"]+)"', t) if any(k in m for k in ("product", "/p/", "category", "collections"))})
         print("  sample links:", links[:15])
 
