@@ -191,3 +191,32 @@ def test_audit_finds(title, want):
 ])
 def test_consoles(title, want):
     assert type_of(title) == want
+
+
+@pytest.mark.parametrize("title,want", [
+    # third sweep, 20 Oct 2026
+    ("ZEBRONICS ZEB-ZS500 500 Watts Computer PSU with 3 SATA Cables", "Power Supply"),
+    ("Antec Atom V450 450 Watts Gaming PSU with 3 SATA Cables", "Power Supply"),
+    ("ZEBRONICS Gold Power Supply with 3X SATA connectors,with 1.2m Power Cable 450 Watts Computer PSU with 3 SATA Cables", "Power Supply"),
+    ("Mean Well SMPS, 48 Valt, 1.1 AMP, LRS-50-48, panel mount 50 Watts Computer PSU with 0 SATA Cables", "Other"),
+    ("BALRAMA Led Controller T1000S With Sd Card 60 Watts Computer PSU with 3 SATA Cables", "Other"),
+    ("skarsh Power Cable Desktops PC and Printers Monitor SMPS Power Cable Mains Power Cable 1000 Watts Computer PSU with 2 SATA Cables", "Accessories"),
+    ("Sgt Wall Mounted Wooden Hook Rack / Coat Hanger Wall Mounted Wooden Hook Rack / Coat Hanger Cabinet Compatible with Computer", "Other"),
+    ("Senvox World Map Keyboard Desk Mat | Large Extended Mouse Pad with Non-Slip Base Desk Mat Cabinet Compatible with Computer", "Mousepad"),
+    ("LIAN LI GB-001 Anti Sag Bracket For Graphics Card", "Accessories"),
+    ("ASUS Pro WS TRX50-SAGE WiFi A AMD TRX50 TR5 CEB Workstation Motherboard, PCIe 5.0 x 16, Multi-GPU Support", "Motherboard"),
+    ("CORSAIR Frame 4500X RS-R ARGB Panoramic Glass Mid-Tower PC Case – Fits Dual 360mm Radiators, GPU Anti-Sag", "PC Case/Chassis"),
+    ("HOKIPO Gaming Chair Cover, Stretchable, Revolving Chair, Turquoise", "Accessories"),
+    ("NiTHO RAVEN Gaming Office Chair | Ergonomic Computer Chair with Linkage Armrests, Foldable Footrest, Class 3 Gas Lift", "Gaming Chair"),
+    ("Zodiac Screen Guard for Universal Neo Earbud Nano Glass 100.577", "Other"),
+    ("ULTRAZONE Laptop Speaker Replacement for Acer Aspire A515-51 51G A315-53 53G 1 W Laptop/Desktop Speaker", "Accessories"),
+    ("NILIX Professional Computer Cleaning Tool for CPU Processor 0 GHz AM2 1 Core Processor Designed for Laptop, Desktop", "Other"),
+    ("HP HS04 41Wh Laptop Battery Compatible with Laptops | 14.8V 2670mAh 4-Cell | Replacement Battery 4 Cell Laptop Battery", "Accessories"),
+    ("SYARA Wireless Gaming Sports Headphones Stereo With SD Card & 5-6h Battery BackupQH143 Bluetooth", "Headset"),
+    ("ANTEC Prizm 140mm ARGB Cabinet Fans and LED Controller ( Dual Pack )", "Fans & Cooling"),
+    ("Etzin SAS Cable 0.4 m SATA Cable III 6Gbps Straight HDD SDD Data Cable", "Accessories"),
+    ("WD Elements 6 TB External Hard Disk Drive (HDD) 5 GB/s, USB 3.0 Cable, Compatible with Windows", "HDD"),
+    ("MSI EdgeXpert QSFP High-Speed Networking Cable", "Networking"),
+])
+def test_third_sweep(title, want):
+    assert type_of(title) == want

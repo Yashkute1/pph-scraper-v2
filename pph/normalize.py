@@ -169,7 +169,7 @@ def type_of(title):
 
 # Flipkart lists toys and gadgets with a made-up spec ending: "... 5.4 GHz sTR4 2 Core Processor Designed for Mobile" or
 # "... AM1Socket ATX AMD 320 Chipset DDR2 Motherboard for Mobile". The ending says nothing; the start says what it is.
-_FK_CPU = re.compile(r"\d+(\.\d+)? ghz \S+ \d+ core processor designed for (desktop|mobile|server|workstation)", A)
+_FK_CPU = re.compile(r"\d+(\.\d+)? ghz \S+ \d+ core processor designed for (desktop|mobile|server|workstation|laptop)", A)
 _FK_BOARD = re.compile(r"\S*socket (e-?atx |micro ?atx |mini ?itx |atx )?(amd |intel )?\S+ chipset ddr\d motherboard for (mobile|desktop|server)", A)
 _COOLING_FAN = r"(cooling|cabinet|pwm|cpu|case|exhaust|motherboard|laptop|replacement) (cooling )?fan\b|\bfan cpu\b|\bcooling pad\b|laptop cooler\b|card cooler\b"
 _TOWER = r"\b(mid|full|mini|micro)[- ]?tower\b|\batx (mid )?(tower|case|cabinet)|\bcabinet with\b|\bcase with\b|\bchassis\b|aquarium|\b\d fans?\b.{0,20}(included|pre-?installed)"
@@ -177,7 +177,51 @@ _TOWER = r"\b(mid|full|mini|micro)[- ]?tower\b|\batx (mid )?(tower|case|cabinet)
 
 def _audit_fixes(t):
     """Listings the October 2026 live audit found in the wrong place; checked before the general rules."""
-    if _s(r"degreaser|stain remover|kitchen chimney", t):
+    if _s(r"degreaser|stain remover|kitchen chimney|kitchen organi[sz]er|airtight|hair straightener|straightener comb|coat hanger|lens cleaning wipes", t):
+        return 'Other'
+    # Flipkart's "... 200 Watts Computer PSU with 2 SATA Cables" ending also lands on LED controllers, mains cords and CCTV
+    # adapters; only a head that is itself a PC power supply keeps it in power supplies.
+    m = re.search(r"\d+ watts (computer |gaming |server )?psu with \d+ sata cables", t, A)
+    if m:
+        head = t[:m.start()]
+        if _s(r"\batx\b|80\s?\+|80 plus|bronze|gold|platinum|modular", head): return 'Power Supply'
+        if _s(r"(power|mains|ac) (cable|cord|lead)|cable cord|power cable", head): return 'Accessories'
+        if _s(r"\bled\b|cctv|dimmer|din rail|\bvdc\b|\d+\s?v(olt|alt)?s?\b|\d+(\.\d+)?\s?a(mp)?s?\b|adapt[eo]r|charger|transformer|controller|strip|rainproof|"
+              r"panel mount|regulated|mean ?well|\blrs-|\bmdr-|converter|dc[- ]?dc|channel", head) \
+                and not _s(r"\batx\b|80\s?\+|80 plus|bronze|gold|platinum|modular", head):
+            return 'Other'
+        return 'Power Supply'
+    # Flipkart's "... Cabinet Compatible with Computer" ending on hooks, drawers and brushes
+    m = re.search(r"\bcabinet compatible with (computer|gaming console)", t, A)
+    if m and not _s(r"\batx\b|tower|gaming cabinet|airflow|tempered glass|\bargb\b|\brgb\b|\bitx\b|mesh|\bcase\b|pc cabinet", t[:m.start()]):
+        head = t[:m.start()]
+        if _s(r"\bmat\b|desk ?pad|mouse ?pad|workspace pad", head): return 'Mousepad'
+        if _s(r"\bfan\b|cooler", head): return 'Fans & Cooling'
+        return 'Accessories' if _s(r"keyboard|cleaning|brush", head) else 'Other'
+    # parts and add-ons sold for a product, not the product
+    if _s(r"anti[- ]?sag (bracket|support|stand)|vertical (gpu |graphics card )?(bracket|mount)( kit)?|gpu (support )?(holder|bracket|stand)|graphics card (holder|support bracket|bracket)", t) \
+            and not _s(r"gddr\d|\d+\s?gb\b.{0,20}graphics card|motherboard|tower|cabinet|\bcase\b|chassis", t):
+        return 'Accessories'
+    if _s(r"hard disk skin|hdd skin|(sata|sas) (data )?cable|hdd cable|ssd (adapter|bracket|mounting)|m\.?2 (nvme )?(adapter|converter)|nvme (adapter|converter)|"
+          r"(ssd|hdd|nvme) (dock|enclosure|external case)|external case.{0,20}(hdd|ssd)|2\.5 to 3\.5", t) and not _s(r"\b\d+\s?(gb|tb)\b.{0,30}(internal|external) (ssd|hard)|portable ssd|external hard drive\b(?!.{0,10}(case|enclosure))", t):
+        return 'Accessories'
+    if _s(r"chair cover|gas lift (cylinder|replacement)|replacement.{0,20}gas (lift|cylinder)|chair (cylinder|wheels?|castors?)|armrest pads?|seat (cushion|slipcover)|cushion set", t) and not _s(r"^\W*\S+( \S+)? (gaming|office|ergonomic) chair\b(?!.{0,6}cover)", t):
+        return 'Accessories'
+    if _s(r"screen guard|tempered glass|screen protector", t) and _s(r"earbud|airpods|watch|phone|mobile|tab\b|tablet", t):
+        return 'Other'
+    if _s(r"laptop speaker replacement|speaker replacement for|optical (splitter|adapter)|toslink", t):
+        return 'Accessories'
+    if _s(r"\bqsfp|\bsfp\+?\b.{0,20}(cable|module)|interconnect cable|dac cable", t):
+        return 'Networking'
+    if _s(r"replacement battery|laptop battery|battery for (hp|dell|lenovo|asus|acer)", t) and not _s(r"\bups\b|inverter", t):
+        return 'Accessories'
+    if _s(r"usb (2|3)\S* header|header (port|cable)|pci rear panel|power (sharing )?cable.{0,40}(atx|eps|pin)|\d+[- ]pin (male|female) to", t) and not _s(r"\bpsu\b.{0,10}with|power supply (unit|\d)", t[:40]):
+        return 'Accessories'
+    if _s(r"mouse.{0,15}keyboard combo|keyboard.{0,15}mouse combo", t) and _s(r"combo motherboard", t):
+        return 'Keyboard'
+    if _s(r"(bluetooth|wireless|wired) (headphones?|earphones?|neckband)|headphones?\b.{0,30}(sd card|fm)", t) and _s(r"sd card", t):
+        return 'Headset'
+    if _s(r"t-?1000s|ws281\d|pixel (led )?controller|led strip controller|dimmer|dimming controller", t) and not _s(r"\bfan|cooler|argb|\brgb\b.{0,20}(fan|cooler)", t):
         return 'Other'
     # workstation and bare graphics cards ("NVIDIA RTX PRO 6000 Blackwell Workstation Edition 96GB") are not PCs
     if not _FK_GPU.search(t) and _s(r"graphics? card|\bgpu\b|video card", t) and _s(r"gddr\d|\b\d{1,2}\s?gb\b|quadro|firepro|rtx (pro|a\d{3,4})", t) \
