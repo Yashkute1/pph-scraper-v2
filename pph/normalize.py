@@ -119,9 +119,45 @@ def _system(t):
     return bool(kit or (words and (ram or disk) and (cpu or lead)) or (words and cpu and lead) or whole)
 
 
+# Console categories hold the consoles themselves and their official controllers; games go to Games and the rest
+# (stands, covers, dust kits) to Gaming Accessories, wherever the general rules first put them.
+_CONSOLE_ACC = re.compile(r"controller|dualsense|dualshock|joy-?con|gamepad|charging|charger|\bstand\b|cover|skin|sticker|\bcase\b|\bbag\b|"
+                          r"headset|cable|\bfan\b|\bdock\b|wheel|joystick|\bgrip|thumb|remote|camera|\bvr\b|portal|plug|dust|mount|holder|"
+                          r"\bfor (sony |the |your )?(ps[45]|playstation|xbox|nintendo|switch)|compatible|protector|screen guard|tempered|"
+                          r"\bkit\b|\bssd\b(?!.{0,25}(console|all-?digital))|nvme|expansion card|memory card|battery|\bpad\b|pedal|yoke|cleaning", A)
+_GAME_HINT = re.compile(r"\bgame\b(?!\s*(controller|pad|chair|stand|console|card))|\bgames\b(?!\s*console)|edition|\(ps[45]\)|\| ?ps[45]|"
+                        r"\bpegi\b|\bdlc\b|digital (code|key)|\bkey\b|code in a box|\bupgrade\b|game (cd|disc|chip)|\bcd\b|\bdisc\b(?! (edition|drive))", A)
+
+
+def _console(t):
+    """'PlayStation' / 'Xbox' / 'Nintendo' when the listing is the console itself (a bundle counts), else ''.
+    The console must lead the title, and accessory words only count before a bundle marker ("& charging station")."""
+    head = re.sub(r"^\W*(new |latest |original |genuine |sony |microsoft |playstation sony |gaming console:\s*)+", "", t.strip())
+    head = re.sub(r"\(?games? not included\)?", " ", head)
+    bare = re.fullmatch(r"(nintendo switch( 2| oled| lite)?|playstation ?5( slim| pro)?|ps ?5( slim| pro)?|xbox series [xs])\W*", head)
+    if bare:
+        return 'Nintendo' if 'switch' in head else 'Xbox' if 'xbox' in head else 'PlayStation'
+    cut = re.search(r"\s(&|\+|with|bundle|combo)\s", head)
+    pre = head[:cut.start()] if cut else head
+    if _CONSOLE_ACC.search(re.sub(r"\b(ssd|nvme)\b", " ", pre)) or _s(r"headphone|earphone|\bmic\b|microphone|speaker|\bmonitor\b|tv box|retro|emulator|game (stick|box)|"
+                                       r"faceplate|shell|plate|replacement|\bjeu\b|console edition|game chip|game card only|"
+                                       r"(?<!console )(?<!video )\bgames?\b(?! console)|blu-?ray|\bcd\b|delivery|download|disc drive|\bdrive\b(?! combo)", pre):
+        return ''
+    if re.match(r"(playstation ?(®|\(r\))?\s?5|ps ?5)\b", head) and _s(r"\bconsole\b|\bslim\b|digital|disc|\bcfi-?\d{4}|\bpro\b|\d+\s?(gb|tb)\b", head):
+        return 'PlayStation'
+    if re.match(r"(playstation ?4|ps ?4)\b", head) and _s(r"\bconsole\b|\bslim\b|\bpro\b.{0,20}\d+\s?(gb|tb)|\d+\s?(gb|tb)\b", head):
+        return 'PlayStation'
+    if re.match(r"xbox (series [xs]|one [sx]?)\b", head) and _s(r"\bconsole\b|\d+\s?(gb|tb)\b|all-?digital|disc edition", head):
+        return 'Xbox'
+    if re.match(r"(nintendo\s+)?(sw\s+)?switch( 2| oled| lite)?\b|nintendo switch", head) and head.startswith(("nintendo", "switch")) \
+            and _s(r"\bconsole\b|oled|\blite\b|\d+\s?gb\b|bundle|joy-?con", head):
+        return 'Nintendo'
+    return ''
+
+
 def type_of(title):
     """The site category for a listing title, or "Other" when it is not a PC product."""
-    cat = _type_of(title)
+    cat = _rules_console(title, _type_of(title))
     # A bare brand ("ZORBES", "Case Club") lands in the catch-all; it says nothing about what the product is.
     if cat == "Components" and len(re.findall(r"[a-z0-9]+", str(title).lower())) < 3:
         return "Other"
@@ -197,6 +233,27 @@ def _audit_fixes(t):
             and not _s(_RAM_SIZE, t):
         return 'Processor/CPU'
     return None
+
+
+def _rules_console(title, cat):
+    t = ' ' + _WS.sub(' ', _DOTS.sub(' ', str(title).lower())) + ' '
+    if cat == 'Other':
+        return cat
+    con = _console(t)
+    if con:
+        return con
+    if cat in ('PlayStation', 'Xbox', 'Nintendo'):
+        if _s(r"dualsense|dualshock|joy-?con|xbox (wireless|elite|core) controller|pro controller", t) and not _s(r"charging|charger|stand|cover|skin|grip|case\b|thumb|dock", t):
+            return cat
+        if _GAME_HINT.search(t) and not _s(r"controller|\bstand\b|cover|skin|dust|\bkit\b|yoke|wheel|pedal|headset|cable|charg|\bcase\b|\bbag\b|grip|mount|holder", t):
+            return 'Games'
+        if _s(r"\bssd\b|nvme|m\.2", t): return 'SSD'
+        return 'Gaming Accessories'
+    # a game that the general rules could not place ("PS5 Marvel's Wolverine", "UNTIL DAWN (PS5)")
+    if cat == 'Components' and _s(r"\b(ps ?[345]|playstation ?[345]|xbox (series|one)|nintendo switch|switch 2)\b", t) and not _CONSOLE_ACC.search(t) \
+            and not _s(r"hdmi|adapter|converter|capture|\bcard\b|monitor|\btv\b", t):
+        return 'Games'
+    return cat
 
 
 def _type_of(title):

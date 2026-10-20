@@ -163,3 +163,27 @@ def test_rollup_regroups_an_offer_whose_id_was_vague():
 ])
 def test_audit_finds(title, want):
     assert type_of(title) == want
+
+
+@pytest.mark.parametrize("title,want", [
+    # consoles in their own category, games in Games, the rest in Gaming Accessories (October 2026 search check)
+    ("Sony PlayStation®5 Digital Edition (slim) Console Video Game", "PlayStation"),
+    ("Playstation Sony PS5 Pro 2TB SSD Gaming Console Play Station 5", "PlayStation"),
+    ("Sony PlayStation®5 Digital Edition (slim) Console & PowerA Twin Charging Station for PS5 Wireless Controllers", "PlayStation"),
+    ("MICROSOFT Xbox Series S 512 GB", "Xbox"),
+    ("Xbox Series X 1TB Disc Edition, 4K Resolution with 120FPS, High Performance SSD 1024 GB with Wiresless Gaming Controller", "Xbox"),
+    ("NINTENDO Switch Lite Portable Gaming Console for TV & Handheld Play Built-in Controllers", "Nintendo"),
+    ("NINTENDO Switch 2 Gaming Console | The Ultimate 3-in-1 Gaming Powerhouse| Next Version | Play:TV, Tabletop or Handheld", "Nintendo"),
+    ("Nintendo Switch 2", "Nintendo"),
+    ("PS5 Marvel's Wolverine", "Games"),
+    ("UNTIL DAWN (PS5)", "Games"),
+    ("PS5 Cricket 26 | ps5 playstation games Blu-ray Disc | PS5 Sports Game", "Games"),
+    ("Call of Duty Black Ops Cold War Xbox Game | Optimized for Xbox Series X & Xbox Series S", "Games"),
+    ("PS5 Slim Console Faceplate, Cooling Vents with RGB Light, Replacement Side Plates", "Gaming Accessories"),
+    ("TCOS TECH PS5 Slim Dust Proof Kit, 9Pcs Dust Plug Kit for PS5/PS5 Slim Console", "Accessories"),
+    ("TMG Dust Proof Kit Compatible with Xbox Series X Console", "Gaming Accessories"),
+    ("KingSpec XG7000 2TB NVMe SSD PCIe 4.0-7400MB/s Read Speed, M.2 2280 Internal SSD, Compatible with Gaming PC, Laptop, PS5 Console", "SSD"),
+    ("RAZER Kraken X for Console Wired Gaming Headphones With Mic ( Pc / Mac / Xbox / PS4 / PS5 )", "Gaming Accessories"),
+])
+def test_consoles(title, want):
+    assert type_of(title) == want
