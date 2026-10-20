@@ -16,7 +16,7 @@ from pph.adapters.html_listing import _OOS, _card, _from_detail
 from pph.fetch import BlockedError, Fetcher_
 from pph.stores import STORES
 
-SAMPLE = 15
+SAMPLE = int(os.environ.get("SAMPLE", "60"))
 _TAGS = re.compile(r"<script.*?</script>|<style.*?</style>|<[^>]+>", re.S | re.I)
 _BUY = re.compile(r"add to cart|buy now|add to basket", re.I)
 _META = re.compile(r'<meta[^>]+(?:product:availability|og:availability)[^>]+content="([^"]+)"', re.I)
@@ -54,6 +54,11 @@ def product_pages(store, cfg, db, fetcher):
         tally["ld_out"] += ld is False
         tally["ld_in"] += ld is True
         tally["text_oos"] += bool(sn)
+        if ld is True and not (store == "amazon"):
+            continue
+        avail = re.search(r'id="availability".{0,400}?</div>', page.text, re.S)
+        if avail:
+            print(f"      availability: {_text(avail.group(0))[:120]}")
         print(f"  [{'ld:' + ('IN' if ld else 'OUT') if ld is not None else 'ld:-'} meta:{meta.group(1) if meta else '-'} "
               f"buy:{len(_BUY.findall(text))} status:{page.status}] {price} {title[:70]}\n    {url}")
         for s in sn:
@@ -85,6 +90,25 @@ def listing(store, cfg, fetcher):
     print(f"  == {store} listing {url}: {len(cards)} cards, {flagged} say out of stock, {missed} of those kept in stock")
 
 
+def woo_api(store, cfg, fetcher):
+    """PC Studio blocks product pages; its Store API says how each product counts as in stock."""
+    if cfg["adapter"] != "woo_store_api":
+        return
+    from collections import Counter
+    from pph.adapters.common import json_page
+    seen = Counter()
+    for n in range(1, 6):
+        items = json_page(fetcher, cfg["base"].rstrip("/") + f"/wp-json/wc/store/v1/products?per_page=100&page={n}", first=(n == 1)) or []
+        for p in items:
+            av = p.get("stock_availability") or {}
+            key = (p.get("is_in_stock"), p.get("is_purchasable"), av.get("class"), (av.get("text") or "")[:30])
+            if seen[key] < 2:
+                print(f"  api in_stock={key[0]} purchasable={key[1]} class={key[2]!r} text={key[3]!r} low={p.get('low_stock_remaining')} {p.get('name', '')[:60]}")
+            seen[key] += 1
+    for k, v in seen.most_common():
+        print(f"  == {store} api {v:4} x in_stock={k[0]} purchasable={k[1]} class={k[2]!r} text={k[3]!r}")
+
+
 def main(stores):
     db = sql_db.connect(os.environ["MYSQL_URL"])
     for store in stores or list(STORES):
@@ -92,6 +116,7 @@ def main(stores):
         print(f"\n######## {store} ({cfg['adapter']}, {cfg['mode']})", flush=True)
         fetcher = Fetcher_(cfg["mode"], (1, 2))
         listing(store, cfg, fetcher)
+        woo_api(store, cfg, fetcher)
         product_pages(store, cfg, db, fetcher)
         sys.stdout.flush()
 
