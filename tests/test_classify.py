@@ -220,3 +220,34 @@ def test_consoles(title, want):
 ])
 def test_third_sweep(title, want):
     assert type_of(title) == want
+
+
+@pytest.mark.parametrize("title,want", [
+    # fourth sweep, 20 Oct 2026
+    ("Rode NT-USB Mini USB Microphone", "Microphone"),
+    ("Wifton USB RGB Condenser Microphone with Adjustable Stand for Podcasting Gaming Singing Microphone", "Microphone"),
+    ("CAPLIC XLR Cable for Condenser Microphone Balanced 3 Pin for Studio Amplifier Mixer Speaker Cabinets", "Accessories"),
+    ("GLORIOUS Panda Tactile Switches X36 Unlubed (GLO-SWT-HPANDA)", "Keyboard"),
+    ("HYPERX Pudding Keycaps Double Shot PBT (Pink)", "Keyboard"),
+    ("Thermal Grizzly Conductonaut Desktop Liquid Metal Paste - 1.0 Gram", "Thermal Paste"),
+    ("ASUS ROG Matrix Platinum GeForce RTX 5090 OC 30th-Anniversary Edition Gaming Graphics Card, 32GB GDDR7, PCIe 5.0, 512-bit, Liquid Metal Cooling", "Graphics Card"),
+    ("THRUSTMASTER T-598 Direct Drive Wheel For Playstation & PC", "Gaming Accessories"),
+    ("ThrustMaster T-Flight Gaming Headset - US Air Force Edition", "Headset"),
+    ("CADYCE 5X1 HDMI SWITCH 4K@60HZ WITH REMOTE & CHANGE OVER BUTTON. CA-5HDS PLUS", "Accessories"),
+    ("TECNICO A1 Desktop CPU, Core i3-3470 3.2GHz, 8GB DDR3 RAM, 128GB SSD, RGB Gaming Keyboard Mouse Speakers Set, HDMI Cable", "Desktop PC"),
+    ("SANDISK PROFESSIONAL 2TB PRO-BLADE TRANSPORT,SDPM2NB-002T-GBAND", "SSD"),
+    ("Samsung 27\" Odyssey G5 Fast IPS Gaming Monitor | QHD 2560 x 1440 | 180 Hz | 1ms | Ports-DP,HDMI,Headphone", "Monitor"),
+    ("Samsung Odyssey G5 80.0 cm (32 inch) Curved Quad HD LED Backlit VA Panel with HDR10, 1000R curvature, Ports-HDMI,DP,Headphone", "Monitor"),
+    ("Bitsweb White Gaming PC Set with 22 Inch LED Monitor, Core i3 Processor, 8GB RAM, 256GB SSD", "Desktop PC"),
+    ("Apple iMac M4 (16 GB Unified/256 GB SSD/macOS Sequoia/24 Inch Screen/MWUU3HN/A)", "Desktop PC"),
+    ("FPS-500S SMPS 200W PS3 Power Supply | 20+4 Pin, 4+4 CPU Connector | BIS Certified | Low Noise", "Power Supply"),
+    ("Geonix Optima R5 Mid Tower PC Cabinet with 200W in-Built SMPS, Micro-ATX & Mini-ITX, 240mm GPU Support", "PC Case/Chassis"),
+    ("Consistent Voltedge 450W Power Supply, ATX Desktop SMPS with 8cm Fan, SMT Design, 20+4 Pin ATX, Includes 1.2M India Power Cord", "Power Supply"),
+    ("Ranz Power Cord 1.5 m Power Supply Cable for CPU & UPS", "Accessories"),
+    ("Varaha Neer BIS Certified Office,Study Chair | 5 Year Warranty| Curved Armrest & Smart Tilt Locking System| Class 4 Gas Lift", "Gaming Chair"),
+    ("Office Chair Mat for Hardwood Floor, Desk Rug for Rolling Chair, Computer Gaming Chair Mat", "Accessories"),
+    ("ishield doorbell HomeView 7 Elite HD Webcam 480p, with Microphone, Night vision", "Other"),
+    ("BALRAMA Standard 15-pin VGA Cable Male to Male VGA Video Cable TV PC Computer Monitor 300 Watts Computer PSU with 2 SATA Cables", "Accessories"),
+])
+def test_fourth_sweep(title, want):
+    assert type_of(title) == want
