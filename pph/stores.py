@@ -62,6 +62,7 @@ STORES = {
         # class names on Flipkart are randomised per release, so only structure is used
         "card": "div[data-id]", "title": ["a[title]::attr(title)", "img::attr(alt)"], "link": ['a[href*="/p/"]::attr(href)'],
         "price": ("rupee", 0), "mrp": ("rupee", 1), "image": "img[alt]", "page_param": "page", "max_detail": 0,
+        "oos": "card",   # sold-out cards start with "Currently unavailable" and still show a price
     },
     "amazon": {
         "adapter": "html_listing", "mode": "stealth", "base": "https://www.amazon.in", "delay": (3, 5), "max_pages": 12,
