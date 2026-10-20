@@ -7,6 +7,7 @@ reading JSON), scrape_runs, benchmarks and legacy_redirects. Lists and objects a
 The roll-up builds fresh copies of the three product tables and swaps them in with one RENAME, so the site never
 reads a half-written catalogue."""
 import json
+import re
 from datetime import datetime, timedelta
 from urllib.parse import unquote, urlsplit
 
@@ -64,6 +65,8 @@ SCHEMA = [
     """CREATE TABLE IF NOT EXISTS legacy_redirects (
       old_id VARCHAR(64) NOT NULL PRIMARY KEY, group_id VARCHAR(191) NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""",
+    # added October 2026: marks the run that last counted an offer as missed, so a resent statement cannot count it twice
+    "ALTER TABLE offers ADD COLUMN IF NOT EXISTS aged_at DATETIME NULL",
 ]
 
 
@@ -92,11 +95,16 @@ def _rows(cur, sql, args=None):
 
 MAX_STMT = 512 * 1024        # bytes per statement; shared hosts often reset connections that send very large packets
 GONE = 2006                  # "server has gone away": the statement could not be sent, so it never ran
+LOST = (2013, 2055)          # connection lost during a statement: it may have run, so only statements safe to repeat are resent
+_REPEATABLE = re.compile(r"^\s*(SELECT|REPLACE|DELETE|CREATE|ALTER|DROP|SHOW|INSERT IGNORE)\b|ON DUPLICATE KEY UPDATE|"
+                         r"^\s*UPDATE offers SET in_stock=0|aged_at<|^\s*UPDATE offers o JOIN recat_work", re.I)
 
 
 def _retry_cursor():
-    """A cursor that reopens a connection the host has dropped and sends the statement again. Only error 2006 is
-    retried: the statement was never delivered, so sending it again cannot apply it twice."""
+    """A cursor that reopens a connection the host has dropped and sends the statement again. Error 2006 is always
+    retried: the statement was never delivered. A connection lost during a statement (2013, 2055) is retried only for
+    statements that give the same result when run twice (reads, upserts, deletes, the guarded aging update); a plain
+    INSERT such as the run record is never resent."""
     import pymysql
 
     class RetryCursor(pymysql.cursors.Cursor):
@@ -107,7 +115,9 @@ def _retry_cursor():
                 try:
                     return super().execute(query, args)
                 except pymysql.err.OperationalError as e:
-                    if e.args[0] != GONE or attempt == _tries - 1:
+                    code = e.args[0] if e.args else None
+                    again = code == GONE or (code in LOST and _REPEATABLE.search(query or ""))
+                    if not again or attempt == _tries - 1:
                         raise
                     import time
                     time.sleep(2 * (attempt + 1))
@@ -170,7 +180,7 @@ def write_store(db, store, offers, now, blocked, started=None, note="", complete
         if ok:
             # Every offer this run saw now has last_seen = now, so "unseen" is everything older for this store.
             unseen = "store=%s AND (last_seen IS NULL OR last_seen<%s)"
-            cur.execute(f"UPDATE offers SET missed_runs=missed_runs+1 WHERE {unseen}", (store, now))
+            cur.execute(f"UPDATE offers SET missed_runs=missed_runs+1, aged_at=%s WHERE {unseen} AND (aged_at IS NULL OR aged_at<%s)", (now, store, now, now))
             cur.execute(f"UPDATE offers SET in_stock=0 WHERE {unseen} AND missed_runs>=%s", (store, now, MISSED_LIMIT))
             cur.execute(f"DELETE FROM offers WHERE {unseen} AND last_seen<%s", (store, now, now - DELETE_AFTER))
         cur.execute("INSERT INTO scrape_runs (store, started, finished, status, fetched, written, previous_count, note) "
@@ -268,7 +278,7 @@ def recategorize_offers(db, now):
             cur.execute("DROP TABLE IF EXISTS recat_work")
             cur.execute("CREATE TABLE recat_work (id CHAR(24) NOT NULL PRIMARY KEY, category VARCHAR(64), group_id VARCHAR(191)) "
                         "DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci")
-            _many(cur, "INSERT INTO recat_work (category, group_id, id) VALUES (%s,%s,%s)", changed)
+            _many(cur, "INSERT IGNORE INTO recat_work (category, group_id, id) VALUES (%s,%s,%s)", changed)
             cur.execute("UPDATE offers o JOIN recat_work r ON r.id = o.id SET o.category = r.category, o.group_id = r.group_id")
             cur.execute("DROP TABLE recat_work")
         ids = [g[0] for g in gone]

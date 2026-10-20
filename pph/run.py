@@ -24,8 +24,10 @@ BLOCKED_EXIT = 3
 
 
 def safe_error(e):
-    """Exception type only: messages can carry connection strings or URLs with credentials."""
-    return type(e).__name__
+    """Exception type, and a database error number when there is one: messages can carry connection strings or URLs
+    with credentials, error numbers cannot."""
+    code = e.args[0] if getattr(e, "args", None) and isinstance(e.args[0], int) else None
+    return type(e).__name__ + (f" {code}" if code is not None else "")
 
 
 # Exception names that mean the store could not be reached, from curl_cffi, the browser and Python itself. Anything
