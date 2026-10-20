@@ -109,7 +109,7 @@ def woo_api(store, cfg, fetcher):
         print(f"  == {store} api {v:4} x in_stock={k[0]} purchasable={k[1]} class={k[2]!r} text={k[3]!r}")
 
 
-def inspect(store, urls, search=None):
+def inspect(store, urls, search=None, searches_all=(), targets=frozenset()):
     """Print every stock signal for given product pages, and the full text of matching search cards."""
     cfg = STORES[store]
     fetcher = Fetcher_(cfg["mode"], (1, 2))
@@ -123,6 +123,13 @@ def inspect(store, urls, search=None):
             print(f"    …{text[max(0, m.start() - 60):m.end() + 40]}…")
         for m in re.finditer(r'"(availability|availabilityStatus|stockStatus|inStock|isAvailable|buyable|sellable)"\s*:\s*("?[^,}]{0,40})', page.text):
             print(f"    json {m.group(1)}={m.group(2)}")
+    for extra in searches_all:
+        page = fetcher.get(extra)
+        cards = page.css(cfg["card"])
+        ids = [el.attrib.get("data-id") for el in cards]
+        print(f"\n## search {extra}\n  {len(cards)} cards; targets present: {sorted(set(ids) & targets)}")
+        for el in cards[:40]:
+            print(f"    {el.attrib.get('data-id')} {el.get_all_text(separator=' | ', strip=True)[:110]}")
     if search:
         page = fetcher.get(search)
         pids = {re.search(r"pid=(\w+)", u).group(1) for u in urls if "pid=" in u}
@@ -148,7 +155,9 @@ def main(stores):
 if __name__ == "__main__":
     if len(sys.argv) > 2 and sys.argv[2].startswith("http"):
         args = sys.argv[2:]
-        search = next((a for a in args if "/search?" in a), None)
-        inspect(sys.argv[1], [a for a in args if a != search], search)
+        searches = [a for a in args if "/search?" in a]
+        targets = {re.search(r"pid=(\w+)", a).group(1) for a in args if "pid=" in a and "/search?" not in a}
+        inspect(sys.argv[1], [a for a in args if a not in searches and "/p/" in a and not os.environ.get("SKIP_PAGES")],
+                None, searches, targets)
     else:
         main(sys.argv[1:])
