@@ -7,6 +7,10 @@ on:
       urls:
         description: 'URLs to fetch (space separated)'
         required: true
+      text:
+        description: 'Also print headings, meta tags and page text'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -27,4 +31,7 @@ jobs:
       - name: Probe
         env:
           URLS: ${{ inputs.urls }}
-        run: python -m tools.probe $URLS
+          TEXT_FLAG: ${{ inputs.text }}
+        run: |
+          if [ "$TEXT_FLAG" = "true" ]; then export TEXT=1; fi
+          python -m tools.probe $URLS
