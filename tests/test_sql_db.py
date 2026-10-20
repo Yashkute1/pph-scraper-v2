@@ -187,3 +187,42 @@ def test_load_redirects_skips_live_and_missing_targets(db):
     out = load(db, [("ssd-old", "ssd-msi-new"), ("ssd-msi-new", "x"), ("ssd-gone", "nowhere")], T0)
     assert out == {"pairs": 3, "loaded": 1, "skipped": 2}
     assert q(db, "SELECT old_id, group_id FROM group_redirects") == (("ssd-old", "ssd-msi-new"),)
+
+
+def test_a_statement_lost_mid_way_is_resent_only_when_running_it_twice_is_harmless(db, monkeypatch):
+    import pymysql
+    import time
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+    real = pymysql.cursors.Cursor.execute
+    lost = {"left": 0}
+
+    def flaky(self, query, args=None):
+        if lost["left"]:
+            lost["left"] -= 1
+            raise pymysql.err.OperationalError(2013, "Lost connection to MySQL server during query")
+        return real(self, query, args)
+    monkeypatch.setattr(pymysql.cursors.Cursor, "execute", flaky)
+    with db.cursor() as cur:
+        lost["left"] = 1
+        cur.execute("SELECT 1")                                  # a read is resent
+        assert cur.fetchone() == (1,)
+        lost["left"] = 1
+        with pytest.raises(pymysql.err.OperationalError):      # the run record is not: it could be written twice
+            cur.execute("INSERT INTO scrape_runs (store, started, finished, status) VALUES ('a', NOW(), NOW(), 'ok')")
+
+
+def test_aging_counts_a_missed_offer_once_per_run_even_if_resent(db):
+    from pph.sql_db import write_store
+    write_store(db, "a", [o("a", n) for n in range(5)], day(0), blocked=False)
+    write_store(db, "a", [o("a", n) for n in range(4)], day(1), blocked=False)
+    with db.cursor() as cur:                                    # the same aging statement sent again for the same run
+        unseen = "store=%s AND (last_seen IS NULL OR last_seen<%s)"
+        cur.execute(f"UPDATE offers SET missed_runs=missed_runs+1, aged_at=%s WHERE {unseen} AND (aged_at IS NULL OR aged_at<%s)", (day(1), "a", day(1), day(1)))
+    assert q(db, "SELECT missed_runs FROM offers WHERE url='https://a.test/p/4'")[0][0] == 1
+
+
+def test_database_errors_report_their_number_but_no_message():
+    import pymysql
+    from pph.run import safe_error
+    assert safe_error(pymysql.err.OperationalError(2013, "Lost connection to 'secret-host'")) == "OperationalError 2013"
+    assert safe_error(ValueError("x")) == "ValueError"
