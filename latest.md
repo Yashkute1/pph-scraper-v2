@@ -1,18 +1,18 @@
 # Scraper status
 
-Last run: 2026-10-21 05:45 UTC. 8 of 10 stores ok.
+Last run: 2026-10-21 12:49 UTC. 10 of 10 stores ok.
 
 | store | status | fetched | written | previous | seconds | note |
 |---|---|---|---|---|---|---|
-| elitehubs | ok | 13214 | 13214 | 13214 | 144 |  |
-| vishalperipherals | ok | 8416 | 8416 | 8416 | 101 |  |
-| pcstudio | ok | 2378 | 2378 | 2380 | 82 |  |
-| primeabgb | ok | 3522 | 3522 | 3524 | 545 |  |
-| vedantcomputers | ok | 481 | 481 | 482 | 188 |  |
-| theitdepot | failed | 0 | 0 | 0 | 282 | database: OperationalError 2003 |
-| mdcomputers | ok | 1989 | 1989 | 1998 | 291 |  |
-| computech | ok | 5402 | 5402 | 0 | 632 |  |
-| flipkart | ok | 6167 | 6167 | 7941 | 664 |  |
-| amazon | failed | 4969 | 0 | 0 | 3004 | database: OperationalError 2003 |
+| elitehubs | ok | 13214 | 13214 | 13214 | 111 |  |
+| vishalperipherals | ok | 8424 | 8424 | 8416 | 87 |  |
+| pcstudio | ok | 2376 | 2376 | 2378 | 86 |  |
+| primeabgb | ok | 3530 | 3530 | 3524 | 547 |  |
+| vedantcomputers | ok | 479 | 479 | 482 | 187 |  |
+| theitdepot | ok | 2277 | 2277 | 2277 | 628 |  |
+| mdcomputers | ok | 1989 | 1989 | 1996 | 294 |  |
+| computech | ok | 5405 | 5405 | 5402 | 645 |  |
+| flipkart | ok | 6157 | 6157 | 7955 | 689 |  |
+| amazon | ok | 4651 | 4651 | 6180 | 3169 |  |
 
-Products: 47203, database 208.0 MB
+Products: 47175, database 207.0 MB
