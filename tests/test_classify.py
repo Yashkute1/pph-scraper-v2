@@ -265,3 +265,28 @@ def test_gpu_add_ons_are_accessories(title):
 def test_mic_with_xlr_cable_is_a_mic():
     assert type_of("Urban Infotech BM-800 Condenser Mic with XLR Cable Shock Mount and Foam Cap Microphone") == "Microphone"
     assert type_of("HYPERX XLR Cable Male-to-Female, 3 Pin, 10-Foot ( Black )") == "Accessories"
+
+
+@pytest.mark.parametrize("title,want", [
+    # fifth sweep, 21 Oct 2026
+    ("Playstation 5 DualSense Wireless Remote for Sony ps5 Console Disc |Digital Edition Precision Bluetooth Gamepad", "Gaming Accessories"),
+    ("Nintendo Switch 2 Choose Your Game Bundle, 256GB Console with Joy-Con 2, 7.9-inch 1080p HDR Display", "Nintendo"),
+    ("GIGABYTE Geforce RTX 5070 Ti Gaming pci_e_x16 OC 16G Graphics Card, 16GB 256-Bit GDDR7, GV-N507TGAMING OC-16GD Video Card", "Graphics Card"),
+    ("ASUS ProArt P16 OLED (2025), AMD Ryzen AI 9 HX 370, RTX 5080-16GB,64GB RAM, 2TB SSD, 16\"/40.64cm Touchscreen, 4K, 120Hz,Windows 11", "Gaming Laptop"),
+    ("Apple 13-inch MacBook Air M5 chip with 10 core CPU and 8 core GPU, 16GB, 512GB SSD - Midnight", "Gaming Laptop"),
+    ("Seagate Barracuda 2 TB Internal Hard Drive HDD – 8.89 cm (3.5 Inch) SATA 6 Gb/s 5400 RPM 256 MB Cache for Computer Desktop PC (ST2000DM005)", "HDD"),
+    ("ULTRAZONE CPU Cooling Fan Dell Inspiron 15-5575, Inspiron 15-3583 Cooling Fan Laptop Cooler", "Fans & Cooling"),
+    ("MSI X299 Raider DDR4 Intel Motherboard", "Motherboard"),
+    ("DELL Inspiron 24 Core i5 (8 GB DDR4/512 GB SSD/Windows 11 Home/23.8 Inch Screen/Inspiron 5420) with MS Office", "Desktop PC"),
+    ("DiskStation DS920+ NAS 64TB (4x16TB HDD, 20GB DDR4 RAM) Network Attached Storage Drive (4 Bay)", "Networking"),
+])
+def test_fifth_sweep(title, want):
+    assert type_of(title) == want
+
+
+def test_a_title_that_starts_with_a_maker_names_that_maker():
+    from pph.normalize import brand_of
+    assert brand_of("Sony PlayStation®5 Digital Edition (slim) Console Video Game & Ant Esports Dock5 RGB") == "Sony"
+    assert brand_of("Lenovo V15, AMD Ryzen 5 7520U, 16GB RAM, 512GB SSD, 15.6\", DOS, Arctic Grey") == "Lenovo"
+    assert brand_of("Intel Core i3 12100F with NVIDIA RTX 3050 custom PC") == "NVIDIA"   # chip makers keep the list order
+    assert brand_of("GIGABYTE B860M AORUS ELITE WIFI6E MOTHERBOARD") == "GIGABYTE"           # same maker: id spelling kept
