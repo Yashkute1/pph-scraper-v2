@@ -226,3 +226,18 @@ def test_database_errors_report_their_number_but_no_message():
     from pph.run import safe_error
     assert safe_error(pymysql.err.OperationalError(2013, "Lost connection to 'secret-host'")) == "OperationalError 2013"
     assert safe_error(ValueError("x")) == "ValueError"
+
+
+def test_rollup_joins_one_product_listed_under_two_titles(db):
+    from pph.sql_db import _upsert_offers, offer_row, write_rollup
+    with db.cursor() as cur:
+        _upsert_offers(cur, [
+            offer_row("c" * 24, {"store": "mdcomputers", "url": "u1", "title": "Crucial P3 Plus 1TB PCIe M.2 2280 SSD (CT1000P3PSSD8)", "price": 6200,
+                                 "in_stock": True, "category": "SSD", "group_id": "ssd-crucial-1tb-2280-ct1000p3pssd8-p3-plus", "brand": "Crucial", "last_seen": T0}),
+            offer_row("d" * 24, {"store": "amazon", "url": "u2", "title": "CRUCIAL P3 PLUS 1TB M.2 NVME PCIE GEN 4.0 INTERNAL SSD (CT1000P3PSSD8)", "price": 6400,
+                                 "in_stock": True, "category": "SSD", "group_id": "ssd-crucial-1tb-ct1000p3pssd8-p3-plus", "brand": "Crucial", "last_seen": T0}),
+        ])
+    out = write_rollup(db, day(1))
+    assert out["merged"] == 1
+    assert q(db, "SELECT group_id, store_count, best_price FROM products") == (("ssd-crucial-1tb-ct1000p3pssd8-p3-plus", 2, 6200),)
+    assert q(db, "SELECT old_id, group_id FROM group_redirects") == (("ssd-crucial-1tb-2280-ct1000p3pssd8-p3-plus", "ssd-crucial-1tb-ct1000p3pssd8-p3-plus"),)
