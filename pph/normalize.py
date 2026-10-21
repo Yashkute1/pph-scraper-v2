@@ -51,13 +51,21 @@ def _title_case(s):
     return re.sub(r"\b\w", lambda m: m.group(0).upper(), str(s).lower(), flags=A)
 
 
+_LEADING = sorted((b for b in BRANDS if b not in {"INTEL", "AMD", "NVIDIA", "XPG", "WD", "WD BLACK"}), key=len, reverse=True)
+
+
 def brand_of(title):
     """Canonical brand found in ``title`` ('' when none)."""
     t = " " + _WSA.sub(" ", re.sub(r"[^A-Z0-9. ]+", " ", str(title or "").upper())) + " "
-    for b in BRANDS:
-        if " " + b + " " in t:
-            return BRAND_CANON.get(b) or _title_case(b)
-    return ""
+    # A title that starts with a maker names that maker: "Sony PlayStation 5 ... & Ant Esports Dock", "LG Ultragear ...
+    # HP" and "Lenovo V15 ... Arctic Grey" are Sony, LG and Lenovo. Chip makers lead PC titles ("Intel i3 ... NVIDIA"),
+    # and XPG and WD_Black are ADATA's and Western Digital's own lines, so those keep the list order.
+    listed = next((BRAND_CANON.get(b) or _title_case(b) for b in BRANDS if " " + b + " " in t), "")
+    for b in _LEADING:
+        if t.startswith(" " + b + " "):
+            lead = BRAND_CANON.get(b) or _title_case(b)
+            return listed if lead.lower() == listed.lower() else lead    # same maker: keep the spelling ids use
+    return listed
 
 
 def buildScore(t):
@@ -175,11 +183,27 @@ _COOLING_FAN = r"(cooling|cabinet|pwm|cpu|case|exhaust|motherboard|laptop|replac
 _TOWER = r"\b(mid|full|mini|micro)[- ]?tower\b|\batx (mid )?(tower|case|cabinet)|\bcabinet with\b|\bcase with\b|\bchassis\b|aquarium|\b\d fans?\b.{0,20}(included|pre-?installed)"
 
 
+# Laptop lines that store titles name without saying "laptop": "ASUS ProArt P16 OLED, Ryzen AI 9 HX 370, RTX 5080".
+_LAPTOP_LINE = re.compile(r"^.{0,40}\b(proart p\d{2}|proart px\d{2}|zenbook|vivobook|ideapad|thinkpad|thinkbook|legion (pro |slim )?[579]i?\b"
+                          r"|\bloq\b|predator helios|rog (zephyrus|flow|strix (g|scar)\s?\d{2})|tuf (gaming )?[af]\d{2}|\bvictus\b|inspiron \d{2}"
+                          r"|galaxy book|macbook|\bkatana\b|\bcyborg\b|stealth \d{2}|\braider\b|crosshair \d{2}|prestige \d{2}|\bzbook\b"
+                          r"|probook|elitebook|omnibook|\bspectre\b|chromebook)")
+
+
 def _audit_fixes(t):
     """Listings the October 2026 live audit found in the wrong place; checked before the general rules."""
     if _s(r"degreaser|stain remover|kitchen chimney|kitchen organi[sz]er|airtight|hair straightener|straightener comb|coat hanger|lens cleaning wipes|"
           r"badminton|cricut|vinyl permanent|doorbell|\b(dash|desk) ?(&|and)? ?(lap|desk)? ?.{0,10}usb .{0,20}fan\b|usb (dual head |twin ?breeze |rotatable )?fan\b.{0,40}(dash|desk|lap)", t):
         return 'Other'
+    # a laptop named by its line, with a processor and no sign of a desktop
+    if _LAPTOP_LINE.search(t) and _s(r"ryzen|core|intel|snapdragon|\bm[1-5]\b|ultra", t) \
+            and not _s(r"desktop|tower|all[- ]?in[- ]?one|\baio\b|monitor\b(?!.{0,6}(stand|arm))|\bbag\b|sleeve|skin|cover|keyboard|charger|adapter|battery|screen guard|backpack|\bfan\b|cooler|cooling|"
+            r"motherboard|\bmouse\b|2\d(\.\d)? inch screen", t):
+        return 'Gaming Laptop'
+    # a hard drive that says it is for a desktop PC
+    if _s(r"internal hard (drive|disk)|\bhdd\b", t[:70]) and _s(r"\b\d+\s?(tb|gb)\b", t) and not _s(r"ryzen|core|\bi[3579]\b|snapdragon|ultra|laptop\b.{0,30}(windows|win\s?1\d)|enclosure|casing|case\b|dock|caddy|cable|"
+                r"shock resistant|\bnas\b|network attached|diskstation", t):
+        return 'HDD'
     # a monitor whose port list says "Headphone" or "Speaker" is still a monitor
     if _s(r"^.{0,60}\b(gaming |curved |ips |oled |4k |business )?monitor\b", t) and _s(r"\d{2}(\.\d)?\s?(inch|\"|cm)|\d{2,3}\s?hz", t) \
             and not _s(r"monitor (stand|arm|mount|light|riser|cable|adapter|bracket)|stand for|light ?bar|mounting|webcam|\bmic\b|microphone|headset with|"
@@ -328,8 +352,12 @@ def _rules_console(title, cat):
     if con:
         return con
     if cat in ('PlayStation', 'Xbox', 'Nintendo'):
-        if _s(r"dualsense|dualshock|joy-?con|xbox (wireless|elite|core) controller|pro controller", t) and not _s(r"charging|charger|stand|cover|skin|grip|case\b|thumb|dock", t):
-            return cat
+        # console categories list consoles only; controllers, official ones included, are accessories
+        if _s(r"dualsense|dualshock|joy-?con|controller|gamepad", t):
+            # "Switch 2 ... Console with Joy-Con 2" is the console; "controller for PS5 console" is not
+            if _s(r"\bconsole\b", t) and not _s(r"(controller|gamepad|dualsense|joy-?con)\b.{0,40}\bfor\b|compatible with|\bfor (the )?(ps[345]|playstation|xbox|nintendo|switch)", t):
+                return cat
+            return 'Gaming Accessories'
         if _GAME_HINT.search(t) and not _s(r"controller|\bstand\b|cover|skin|dust|\bkit\b|yoke|wheel|pedal|headset|cable|charg|\bcase\b|\bbag\b|grip|mount|holder", t):
             return 'Games'
         if _s(r"\bssd\b|nvme|m\.2", t): return 'SSD'
@@ -591,7 +619,7 @@ def _rules_type(title):
     # prebuilt detection BEFORE component matching: explicit words, CPU+GPU, or 3+ parts.
     # [r19] bare DDR DIMM/UDIMM modules ("DIMM Desktop PC Module") are RAM, not prebuilts
     if _s(r"""\b(u|so-?)?dimm\b(?!\s*slots?)""",t) and _s(r"""\bddr[2345]l?\b""",t) and not _s(r"""motherboard|mainboard""",t): return 'Memory/RAM'
-    if _s(r"""(gaming pc(?! (processor|cpu|memory|module|ram|dimm))|desktop pc(?! (processor|cpu|memory|module|ram|dimm))|pre-?built|gaming desktop(?! (processor|cpu|memory|module|ram|dimm))|\bpc build\b|barebone|\bworkstation\b|super ?computer)""",t) or (hasCpu and hasGpu) or buildScore(t)>=3: return 'Desktop PC'
+    if _s(r"""(gaming pc\b(?! (processor|cpu|memory|module|ram|dimm))|desktop pc\b(?! (processor|cpu|memory|module|ram|dimm))|pre-?built|gaming desktop(?! (processor|cpu|memory|module|ram|dimm))|\bpc build\b|barebone|\bworkstation\b|super ?computer)""",t) or (hasCpu and hasGpu) or buildScore(t)>=3: return 'Desktop PC'
     for ty,keys in TYPE_RULES:
         if laptopCtx and ty=='Gaming Laptop': continue
         if any(k in t for k in keys): return ty
