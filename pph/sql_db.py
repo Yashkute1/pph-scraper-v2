@@ -13,6 +13,7 @@ from urllib.parse import unquote, urlsplit
 
 from .benchmarks import build_lookup
 from .group import rollup
+from .merge import merge_map
 from .normalize import recategorize
 from .store_db import BATCH, DELETE_AFTER, MISSED_LIMIT, _history, gate, offer_id  # noqa: F401  (shared rules)
 
@@ -261,17 +262,30 @@ def recategorize_offers(db, now):
     instead of store by store. Offers that are no longer PC products are removed. A part whose id changes keeps its
     old address working: the site sends it on to the new one."""
     with db.cursor() as cur:
-        cur.execute("SELECT id, title, category, group_id, brand FROM offers")
+        cur.execute("SELECT id, title, category, group_id, brand, price FROM offers")
         rows = cur.fetchall()
-        changed, gone, moved = [], [], {}
-        for oid, title, cat, gid, brand in rows:
+        changed, gone, moved = {}, [], {}
+        live = []
+        for oid, title, cat, gid, brand, price in rows:
             r = recategorize(title, cat, gid, brand or "Generic")
             if r is None:
                 gone.append((oid,))
-            elif r != (cat, gid):
-                changed.append((r[0], r[1], oid))
+                continue
+            if r != (cat, gid):
+                changed[oid] = r
                 if r[1] != gid:
                     moved[gid] = r[1]
+            live.append({"id": oid, "title": title, "category": r[0], "group_id": r[1], "brand": brand, "price": price, "was": gid})
+        # the same product listed by several stores under different titles: one page, the others redirect to it
+        joined = merge_map(live)
+        for o in live:
+            keep = joined.get(o["group_id"])
+            if keep:
+                changed[o["id"]] = (o["category"], keep)
+                moved[o["was"]] = keep
+                if o["group_id"] != o["was"]:
+                    moved[o["group_id"]] = keep
+        changed = [(c, g, oid) for oid, (c, g) in changed.items()]
         if changed:
             # One joined UPDATE instead of a round trip per offer: a regrouping can touch thousands of rows and the
             # database is far from the runner. A plain table, so a reconnect in between does not lose it.
@@ -289,7 +303,7 @@ def recategorize_offers(db, now):
               [(old, new, now) for old, new in moved.items() if old and new and old != new])
         # an address that was sent on and is now a product again needs no redirect
         cur.execute("DELETE r FROM group_redirects r JOIN offers o ON o.group_id = r.old_id")
-    return {"recategorized": len(changed), "removed": len(gone), "redirects": len(moved)}
+    return {"recategorized": len(changed), "removed": len(gone), "redirects": len(moved), "merged": len(joined)}
 
 
 def write_rollup(db, now):
