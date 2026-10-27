@@ -354,3 +354,13 @@ def test_laptops_that_list_their_ssd_are_still_laptops():
     from pph.normalize import type_of
     assert type_of("Acer Travellite Ryzen 3 5400U, 8 GB RAM, 256 GB SSD, DOS, Black UN.36WSI.00B") == "Gaming Laptop"
     assert type_of('ASUS ROG Strix G16 G614PR-RV032WS [R9-8940HX/16GB/1TB SSD/WIN11 Home+MSO/16.0"/12GB-RTX5070TI Graphics]') == "Gaming Laptop"
+
+
+def test_terabyte_names_the_maker_only_at_the_start():
+    # its E-02B speaker came out on five pages once "02b" alone stopped grouping unbranded parts
+    from pph.normalize import brand_of
+    ids = {_gid(t, "flipkart") for t in ["TERABYTE E-02B 4 W Laptop/Desktop Speaker", "TERABYTE KUBIX E-02B (USB powered) Laptop/Desktop Speaker",
+                                          "TERABYTE \u2122 E-02B 2.0 Multimedia Computer Speakers"]}
+    assert len(ids) == 1 and next(iter(ids)).startswith("speakers-terabyte-")
+    assert _gid("BigPlayer E-02B USB Multimedia Desktop Speakers Compact Wired Audio Pair") not in ids
+    assert brand_of("Generic 1 Terabyte NVMe SSD") != "Terabyte"
