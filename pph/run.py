@@ -48,7 +48,7 @@ def _utcnow():
 # lost during the handshake (2013), too many connections for the server (1040) or for the user (1203). Hostinger
 # refuses connections for a few minutes at a time, so these are waited out instead of throwing away a scrape.
 CONNECT_ERRORS = {2003, 2013, 1040, 1203}
-WAITS = (30, 60, 120, 180, 240)          # seconds between attempts: about ten minutes in all
+WAITS = (20, 40, 60)                     # seconds between attempts; a longer refusal is written from another machine
 
 
 def _unreachable(e):

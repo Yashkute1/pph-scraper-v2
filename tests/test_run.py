@@ -189,7 +189,7 @@ def test_an_unreachable_database_is_waited_out_not_a_lost_scrape(env, monkeypatc
     finally:
         R.ADAPTERS.pop("fake")
     assert (code, run["status"], run["written"], calls["n"]) == (0, "ok", 2, 3)
-    assert waits == [30, 60]
+    assert waits == [20, 40]
 
 
 def test_a_scrape_the_database_never_accepts_is_saved_and_replayed(env, monkeypatch):

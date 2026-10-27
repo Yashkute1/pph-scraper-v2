@@ -27,7 +27,7 @@ env:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ matrix.store == 'amazon' && 215 || 80 }}
+    timeout-minutes: ${{ matrix.store == 'amazon' && 200 || 60 }}
     strategy:
       fail-fast: false
       matrix:
@@ -55,14 +55,11 @@ jobs:
           # 3 = the store refused this machine. Old prices stay in place and the store is tried again from another
           # machine below, so this is a warning, not a failed run.
           if [ "$code" -eq 3 ]; then echo "::warning::${{ matrix.store }} refused this machine; it will be tried again from another one"; exit 0; fi
-          # The database could not be reached even after about ten minutes of waiting: the scrape was saved, so wait
-          # a little longer and write it, instead of losing an hour of fetching.
-          saved="out/${{ matrix.store }}-offers.json"
-          if [ "$code" -ne 0 ] && [ -f "$saved" ]; then
-            echo "::warning::database not reachable; writing the saved ${{ matrix.store }} scrape in 5 minutes"
-            sleep 300
-            python -m pph.run replay "$saved"
-            code=$?
+          # Hostinger's database sometimes refuses one GitHub machine for an hour while answering others. The scrape
+          # was saved; the write-saved job below writes it from a different machine.
+          if [ "$code" -ne 0 ] && [ -f "out/${{ matrix.store }}-offers.json" ]; then
+            echo "::warning::database not reachable from this machine; the saved ${{ matrix.store }} scrape is written from another one"
+            exit 0
           fi
           exit $code
       - if: always()
@@ -72,6 +69,75 @@ jobs:
           path: out/
           if-no-files-found: ignore
           retention-days: 7
+
+  write-saved:
+    # Scrapes whose machine could not reach the database are written from a new machine, with a new address.
+    needs: scrape
+    if: ${{ always() && !startsWith(github.ref, 'refs/heads/dryrun/') && inputs.dry_run != true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: artifacts
+          pattern: out-*
+      - id: find
+        run: |
+          mkdir -p saved
+          find artifacts -name '*-offers.json' -exec cp {} saved/ \;
+          echo "n=$(ls saved | wc -l)" >> "$GITHUB_OUTPUT"
+      - if: steps.find.outputs.n != '0'
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - if: steps.find.outputs.n != '0'
+        run: pip install -r requirements.txt
+      - name: Write saved scrapes
+        if: steps.find.outputs.n != '0'
+        env:
+          MYSQL_URL: ${{ secrets.MYSQL_URL }}
+        run: |
+          code=0
+          for f in saved/*-offers.json; do python -m pph.run replay "$f" || code=1; done
+          exit $code
+      - if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: saved-unwritten
+          path: saved/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  write-saved-again:
+    # Last try for anything the previous machine could not write either, from a third machine.
+    needs: write-saved
+    if: ${{ always() && needs.write-saved.result == 'failure' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: saved-unwritten
+          path: saved
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Write saved scrapes
+        env:
+          MYSQL_URL: ${{ secrets.MYSQL_URL }}
+        run: |
+          code=0
+          for f in saved/*-offers.json; do [ -f "$f" ] && { python -m pph.run replay "$f" || code=1; }; done
+          exit $code
 
   blocked:
     needs: scrape
@@ -142,7 +208,7 @@ jobs:
           retention-days: 7
 
   rollup:
-    needs: [scrape, retry]
+    needs: [scrape, retry, write-saved, write-saved-again]
     if: ${{ always() && !startsWith(github.ref, 'refs/heads/dryrun/') && inputs.dry_run != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -172,8 +238,31 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  rollup-again:
+    # The roll-up's machine may be one the database refuses; try once more from another.
+    needs: rollup
+    if: ${{ always() && needs.rollup.result == 'failure' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - env:
+          MYSQL_URL: ${{ secrets.MYSQL_URL }}
+        run: python -m pph.run rollup
+      - if: always()
+        env:
+          MYSQL_URL: ${{ secrets.MYSQL_URL }}
+        run: python -m pph.run health --hours 26
+
   report:
-    needs: [scrape, retry, rollup]
+    needs: [scrape, retry, write-saved, write-saved-again, rollup, rollup-again]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
