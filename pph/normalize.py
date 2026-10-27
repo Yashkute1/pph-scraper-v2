@@ -52,6 +52,8 @@ def _title_case(s):
 
 
 _LEADING = sorted((b for b in BRANDS if b not in {"INTEL", "AMD", "NVIDIA", "XPG", "WD", "WD BLACK"}), key=len, reverse=True)
+# Makers whose name is also an ordinary word ("1 Terabyte SSD"): a brand only when the title starts with it.
+_LEADING_ONLY = ("TERABYTE",)
 
 
 def brand_of(title):
@@ -65,6 +67,8 @@ def brand_of(title):
         if t.startswith(" " + b + " "):
             lead = BRAND_CANON.get(b) or _title_case(b)
             return listed if lead.lower() == listed.lower() else lead    # same maker: keep the spelling ids use
+    if not listed:
+        listed = next((_title_case(b) for b in _LEADING_ONLY if t.startswith(" " + b + " ")), "")
     return listed
 
 
