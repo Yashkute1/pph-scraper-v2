@@ -1,0 +1,29 @@
+# Checks by hand whether the Amazon Creators API answers with the saved credentials. Prints status and Amazon's
+# message only; GitHub masks the secrets in the log.
+name: Amazon API check
+on:
+  workflow_dispatch:
+    inputs:
+      asins:
+        description: 'ASINs to look up, separated by spaces'
+        default: 'B0CJJKF2Q2'
+permissions: { contents: read }
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Ask the Creators API
+        env:
+          AMAZON_CREATORS_CREDENTIAL_ID: ${{ secrets.AMAZON_CREATORS_CREDENTIAL_ID }}
+          AMAZON_CREATORS_CREDENTIAL_SECRET: ${{ secrets.AMAZON_CREATORS_CREDENTIAL_SECRET }}
+          AMAZON_CREATORS_CREDENTIAL_VERSION: ${{ vars.AMAZON_CREATORS_CREDENTIAL_VERSION || secrets.AMAZON_CREATORS_CREDENTIAL_VERSION }}
+          AMAZON_PARTNER_TAG: ${{ vars.AMAZON_PARTNER_TAG || secrets.AMAZON_PARTNER_TAG }}
+          ASINS: ${{ inputs.asins }}
+        run: python tools/amazon_api_probe.py $ASINS
