@@ -192,6 +192,47 @@ _LAPTOP_LINE = re.compile(r"^.{0,40}\b(proart p\d{2}|proart px\d{2}|zenbook|vivo
 
 def _audit_fixes(t):
     """Listings the October 2026 live audit found in the wrong place; checked before the general rules."""
+    # sixth sweep (27 October): things that only say they work with a laptop, desktop, motherboard or cabinet
+    if _s(r"\b(pen ?drive|otg drive|flash drive)\b", t) and not _s(r"\d+\s?gb ram|ryzen|\bcore\s?i\d|\bi[3579]-\d{3,5}|windows 1\d|splitter|enclosure|casing|\bhub\b|reader|pendrive usb adapter|wi-?fi|bluetooth", t):
+        return 'Pen Drive'
+    if _s(r"^.{0,60}\b(usb|type[- ]?[ac])\b.{0,25}\b(converter|adapter|otg connector|hub)\b", t) and not _s(r"\d+\s?gb ram|ryzen|\bcore\s?i\d|monitor\b.{0,30}\d{2,3}\s?hz|graphics card|motherboard|"
+            r"wi-?fi|wireless|bluetooth|\blan\b|ethernet|network|dongle|\bmbps\b|802\.11|archer|antenna|\bax\d{3,4}\b|dual band|\bmonitor\b|microphone|\bmic\b|headset|headphone|speaker|camera", t):
+        return 'Accessories'
+    if _s(r"^\W*speaker\b.{0,40}(legion|y540|y7000|ideapad|pavilion|omen|nitro|predator|tuf|rog|vivobook)|laptop (internal|replacement) speakers?\b|"
+          r"internal speakers? (compatible )?for|speaker (compatible )?for (lenovo|asus|hp|dell|acer|msi)\b|speaker[- ]set[- ]left", t):
+        return 'Accessories'
+    if _s(r"\bsound ?bar\b", t) and not _s(r"\bmonitor\b.{0,30}\d{2,3}\s?hz|\btv\b|television|\bcore\s?i\d|ryzen|intel evo|\d+\s?gb\s?/\s?\d+\s?(gb|tb)|laptop\b.{0,20}(16|32)\s?gb", t):
+        return 'Speakers'
+    if _s(r"^\W*epos\b|\b(wired|usb-c|type-c) (earphones?|earbuds|headset)\b|\bchromebook certified\b", t) and not _s(r"laptop\b.{0,40}(ryzen|core|intel|\d+\s?gb ram)", t):
+        return 'Headset'
+    if _s(r"\bfor (nintendo )?switch\b|switch oled|\bns-\d{4}\b", t) and _s(r"\bkit\b|\bcase\b|accessor|\bgrip\b|cover|strap|sportwear|\bstand\b|kickstand|\bdock\b", t) \
+            and not _s(r"\bgames?\b|edition|cartridge|game-key", t):
+        return 'Gaming Accessories'
+    if _s(r"\b(tv|android) box\b|mini pc box|android (tv|v?\d)|amlogic|allwinner|\bh616\b|kitkat", t) and not _s(r"video game|retro|gamepad|\bgames\b|game (box|stick)|console|wi-?fi adapter|dongle|ryzen|\bcore\s?i\d|laptop|\bloq\b", t):
+        return 'Other'
+    if _s(r"^.{0,40}\b\d+\s?(gb|tb)\b.{0,40}\bfor\b.{0,40}(all in one pc|desktop|surveillance|servers?|network attached)", t) and not _s(r"\bram\b|ddr\d|\bssd\b|solid state|nvme|m\.2|ryzen|\bcore\s?i\d", t):
+        return 'HDD'
+    if _s(r"motor driver|h-bridge|l298n|arduino|raspberry pi|breadboard|eeprom|programmer ch341|ch341a|bios writer|spi flash|hobby kit", t) \
+            and not _s(r"camera|webcam|\bfan\b|cooling|case for|enclosure|microphone|\bmic\b|headset|cable|adapter|dongle|wi-?fi", t):
+        return 'Other'
+    if _s(r"diagnostic card|post card|debug card", t) and _s(r"motherboard|\bpc\b|\bpci", t):
+        return 'Accessories'
+    if _s(r"(keyboard|mouse).{0,40}\bcombo\b|\bcombo\b.{0,40}(keyboard|mouse)|\bgaming combo\b|\d in 1 combo\b", t) and _s(r"combo motherboard|motherboard$", t):
+        return 'Keyboard'
+    if _s(r"^.{0,60}\bprocessor\b.{0,40}\bcore\s?i[3579][- ]\d{3,5}|\bcore\s?i[3579][- ]\d{3,5}\b.{0,60}\bprocessor designed for", t) and not _s(r"\d+\s?gb (ddr\d )?ram|motherboard (kit|combo)|\+ ?\d+\s?gb", t):
+        return 'Processor/CPU'
+    if _s(r"\bcctv\b|\bled (signage|strip)|strip lights|\b\d+ ?channel\b.{0,30}power supply|\b(12|5|24) ?v(olt)? ?(dc)?\b.{0,20}\b\d+(\.\d+)? ?a(mp(ere)?s?)?\b|\b\d{2,4} ?ma\b|\bdc[- ]\d+(\.\d)?a\b|"
+          r"piano|portable keyboards|industrial smps|\badaptor\b|5v5a", t) and _s(r"smps|power supply|power adapt(or|er)|\bpsu\b|\b\d+(\.\d+)? ?a(mp(ere)?s?)?\b.{0,15}adapt", t) \
+            and not _s(r"\b80 ?plus\b|\batx\b|pcie|6\+2|modular|\b[4-9]\d0 ?w(att)?s?\b|\b1[0-9]{3} ?w|\bups\b|uninterruptible|\bfan\b|charging (station|dock)|dualsense|controller|"
+                  r"racing|motion|wi-?fi|router|laptop|notebook|multi-?tips?|\bsound ?bar\b|motherboard|graphics card|enclosure|docking|\bhdd\b|hard drive", t):
+        return 'Other'
+    if _s(r"wall cabinet|multi[- ]?purpose cabinet|wardrobe|closet|double door|kitchen|\bbbq\b|wood stove|motion sensor (night )?light|\bnight lamp\b", t) \
+            and not _s(r"chair|graphics card|geforce|\brtx\b|radeon|headset|keyboard|\bmouse\b", t):
+        return 'Other'
+    if _s(r"cabinet cooler|radiator cabinet cooler", t) and _s(r"\bfan\b|cooling", t):
+        return 'Fans & Cooling'
+    if _s(r"\bnas (computer )?case\b|small form factor .{0,20}case\b", t):
+        return 'PC Case/Chassis'
     if _s(r"degreaser|stain remover|kitchen chimney|kitchen organi[sz]er|airtight|hair straightener|straightener comb|coat hanger|lens cleaning wipes|"
           r"badminton|cricut|vinyl permanent|doorbell|\b(dash|desk) ?(&|and)? ?(lap|desk)? ?.{0,10}usb .{0,20}fan\b|usb (dual head |twin ?breeze |rotatable )?fan\b.{0,40}(dash|desk|lap)", t):
         return 'Other'
