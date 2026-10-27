@@ -473,8 +473,16 @@ def _download(url):
 def cmd_list(path, shard, shards, limit, only=None, match=None):
     done = parse_manifest(open("manifest.txt").read()) if os.path.exists("manifest.txt") else {}
     if os.environ.get("MYSQL_URL"):
+        import pymysql
         from pph import sql_db
-        db = sql_db.connect(os.environ["MYSQL_URL"])
+        try:
+            db = sql_db.connect(os.environ["MYSQL_URL"])
+        except pymysql.err.OperationalError as e:
+            # Hostinger refuses some GitHub machines for a while; this shard's pictures wait for the next run
+            # instead of failing the whole job.
+            print(f"::warning::database not reachable from this machine ({type(e).__name__} {e.args[0] if e.args else ''}); shard skipped")
+            open(path, "w").close()
+            return 0
         with db.cursor() as cur:
             cur.execute("SELECT image, category_slug, title FROM products WHERE image <> '' ORDER BY any_stock DESC, store_count DESC")
             docs = [{"image": r[0], "category_slug": r[1], "title": r[2]} for r in cur.fetchall()]
