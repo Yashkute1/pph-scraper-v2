@@ -175,3 +175,13 @@ def test_history_skips_out_of_stock_prices():
     h = _history([{"d": "2026-10-01", "p": 100}], "2026-10-02", 80, in_stock=False)
     assert h == [{"d": "2026-10-01", "p": 100}]
     assert _history(h, "2026-10-02", 90)[-1] == {"d": "2026-10-02", "p": 90}
+
+
+def test_an_address_the_store_moved_goes_at_once(db):
+    # 27 Oct audit: Vishal moved an MSI A520M-A to a new address and the old one answered 404 for days
+    write_store(db, "a", [o("a", n) for n in range(5)], T0, blocked=False)
+    moved = dict(o("a", 0), url="https://a.test/p/0-new")                     # same part, new address
+    write_store(db, "a", [moved] + [o("a", n) for n in range(1, 4)], T0 + timedelta(days=1), blocked=False)
+    urls = {d['url'] for d in db.offers.find()}
+    assert "https://a.test/p/0" not in urls and "https://a.test/p/0-new" in urls
+    assert "https://a.test/p/4" in urls                                          # an unseen part still ages as before

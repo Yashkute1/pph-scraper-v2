@@ -262,3 +262,14 @@ def test_connect_uses_ipv4_and_retries_an_unreachable_server(monkeypatch):
     monkeypatch.setattr(pymysql, "connect", fake_connect)
     assert S.connect("mysql://u:p@db.example:3306/x", sleep=waits.append) == "conn"
     assert seen == ["192.0.2.7"] * 3 and waits == [5, 15]
+
+
+def test_an_address_the_store_moved_goes_at_once(db):
+    from pph.sql_db import write_store
+    # 27 Oct audit: Vishal moved an MSI A520M-A to a new address and the old one answered 404 for days
+    write_store(db, "a", [o("a", n) for n in range(5)], day(0), blocked=False)
+    moved = dict(o("a", 0), url="https://a.test/p/0-new")                     # same part, new address
+    write_store(db, "a", [moved] + [o("a", n) for n in range(1, 4)], day(1), blocked=False)
+    urls = {r[0] for r in q(db, "SELECT url FROM offers")}
+    assert "https://a.test/p/0" not in urls and "https://a.test/p/0-new" in urls
+    assert "https://a.test/p/4" in urls                                          # an unseen part still ages as before

@@ -89,6 +89,10 @@ def _gid(title, store="amazon"):
     ("Kingston Dual Portable 1TB USB 3.2 Gen 2 SSD", "SANDISK 1TB EXTREME PORTABLE SSD"),
     ("CORSAIR Dominator Platinum 16GB (8GB x 2) 3200MHz DDR4 RAM", "Corsair Vengeance RGB RS 16GB (2 x 8GB) 3200MHz DDR4 RAM"),
     ("Dyazo Plus Transparent Wireless Mouse", "LAPCARE Trendy Plus Ergonomic Optical Mouse"),
+    # 27 Oct audit: two makers' E-02B speakers, and kits whose key was only their size, speed and timings
+    ("TERABYTE KUBIX E-02B 2 W Laptop/Desktop Speaker", "BigPlayer E-02B USB Multimedia Desktop Speakers Compact Wired Audio Pair"),
+    ("Viper Elite 5 RGB White 32GB (16GBx2) 6000MHz CL28 DDR5 RAM", "Vengeance RGB 32GB (16GBx2) 6000MHz CL28 DDR5 RAM"),
+    ("Patriot Viper Venom 32GB (16GBx2) DDR5 6000MHz CL28 RAM", "Patriot Viper Elite 5 RGB 32GB (16GBx2) DDR5 6000MHz CL28 RAM"),
 ])
 def test_vague_keys_no_longer_merge_different_products(a, b):
     assert _gid(a) and _gid(b) and _gid(a) != _gid(b)
@@ -321,3 +325,32 @@ def test_a_title_that_starts_with_a_maker_names_that_maker():
     assert brand_of("Lenovo V15, AMD Ryzen 5 7520U, 16GB RAM, 512GB SSD, 15.6\", DOS, Arctic Grey") == "Lenovo"
     assert brand_of("Intel Core i3 12100F with NVIDIA RTX 3050 custom PC") == "NVIDIA"   # chip makers keep the list order
     assert brand_of("GIGABYTE B860M AORUS ELITE WIFI6E MOTHERBOARD") == "GIGABYTE"           # same maker: id spelling kept
+
+
+@pytest.mark.parametrize("title,want", [
+    # 27 Oct audit: drives and add-ons "for laptop" or "for Steam Deck" were filed as laptops
+    ("OEM Samsun 256GB M.2 PCI-e NVMe SSD GEN 4X4 Internal Solid State Drive 30mm 2230 Form Factor M Key Steam Deck", "SSD"),
+    ("KingSpec 1TB M.2 2230 SSD NVMe Gen3x4, PCIe 3.0 SSD with 3D NAND Flash, Internal Solid State Hard Drive for Steam Deck & Surface Pro", "SSD"),
+    ("Seagate FIRECUDA 500 GB Laptop Silver, White SATA Internal Solid State Hybrid Drive (ST500CP)", "SSD"),
+    ("Simmtronics 512GB SATA 2.5 Inch Solid State Drive for Desktop and Laptop with Three Years Warranty", "SSD"),
+    ("Toshiba 1TB 5400RPM SATA3/SATA 6.0 GB/s 8MB Notebook Hard Drive (2.5 inch)- MQ01ABD100", "HDD"),
+    ("TOSHIBA MQ01ABF050 500GB 5400 RPM 8MB Cache 2.5 7mm SATA 3.0GB/s internal notebook hard drive", "HDD"),
+])
+def test_laptop_drives_are_drives(title, want):
+    from pph.normalize import type_of
+    assert type_of(title) == want
+
+
+@pytest.mark.parametrize("title", [
+    "ANT ESPORTS NC280 RGB Gaming Notebook Cooler",
+    "Honeywell 3in1 HDMI to VGA, 3.5mm Audio Jack & Micro USB Port, 1080p@60Hz HDMI Resolution, VGA Resolution for Laptop",
+])
+def test_laptop_add_ons_are_not_laptops(title):
+    from pph.normalize import type_of
+    assert type_of(title) != "Gaming Laptop"
+
+
+def test_laptops_that_list_their_ssd_are_still_laptops():
+    from pph.normalize import type_of
+    assert type_of("Acer Travellite Ryzen 3 5400U, 8 GB RAM, 256 GB SSD, DOS, Black UN.36WSI.00B") == "Gaming Laptop"
+    assert type_of('ASUS ROG Strix G16 G614PR-RV032WS [R9-8940HX/16GB/1TB SSD/WIN11 Home+MSO/16.0"/12GB-RTX5070TI Graphics]') == "Gaming Laptop"
