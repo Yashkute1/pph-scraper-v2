@@ -1,5 +1,5 @@
-"""Command line: `python -m pph.run scrape <store> [--dry-run] [--max-pages N] [--time-budget MIN]`, `rollup`
-and `health [--hours N]`.
+"""Command line: `python -m pph.run scrape <store> [--dry-run] [--max-pages N] [--time-budget MIN]`, `rollup`,
+`health [--hours N]` and `replay <file>` (write a scrape saved when the database could not be reached).
 
 Exit codes for `scrape`: 0 done, 1 failed or incomplete, 3 the store refused this machine (old prices are kept; the
 workflow tries again from another machine and does not count it as a failure)."""
@@ -44,6 +44,44 @@ def _utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
 
 
+# MySQL errors that mean "could not get a connection right now", not a problem with the data: can't connect (2003),
+# lost during the handshake (2013), too many connections for the server (1040) or for the user (1203). Hostinger
+# refuses connections for a few minutes at a time, so these are waited out instead of throwing away a scrape.
+CONNECT_ERRORS = {2003, 2013, 1040, 1203}
+WAITS = (30, 60, 120, 180, 240)          # seconds between attempts: about ten minutes in all
+
+
+def _unreachable(e):
+    code = e.args[0] if getattr(e, "args", None) and isinstance(e.args[0], int) else None
+    return type(e).__name__ == "OperationalError" and code in CONNECT_ERRORS
+
+
+def _write(store, offers, started, blocked, note, complete, db=None, now=None, sleep=time.sleep):
+    """Write one store's scrape, waiting out a database that cannot be reached. Returns the run document."""
+    for attempt in range(len(WAITS) + 1):
+        try:
+            conn = db if db is not None else _connect()
+            return _dbmod(conn).write_store(conn, store, offers, now or _utcnow(), blocked, started=started, note=note,
+                                            complete=complete)
+        except SystemExit:
+            raise
+        except Exception as e:
+            if not _unreachable(e) or attempt == len(WAITS):
+                raise
+            print(f"database not reachable ({safe_error(e)}), trying again in {WAITS[attempt]} s", file=sys.stderr)
+            db = None
+            sleep(WAITS[attempt])
+
+
+def _save(store, offers, started, blocked, note, complete):
+    """Keep a scrape the database refused, so `replay` can write it later instead of fetching everything again."""
+    OUT.mkdir(parents=True, exist_ok=True)
+    path = OUT / f"{store}-offers.json"
+    path.write_text(json.dumps({"store": store, "started": started, "blocked": blocked, "note": note,
+                                "complete": complete, "offers": offers}, default=str))
+    return path
+
+
 def _connect():
     """MySQL (Hostinger) when MYSQL_URL is set, otherwise MongoDB from MONGO_URI."""
     url = os.environ.get("MYSQL_URL")
@@ -76,7 +114,8 @@ def _dbmod(db):
     return store_db
 
 
-def scrape(store, dry_run=False, max_pages=None, time_budget=None, db=None, now=None, fetcher=None, clock=time.monotonic):
+def scrape(store, dry_run=False, max_pages=None, time_budget=None, db=None, now=None, fetcher=None, clock=time.monotonic,
+           sleep=time.sleep):
     """Scrape one store. Returns (exit_code, run document)."""
     cfg = dict(STORES[store])
     if max_pages:
@@ -114,18 +153,33 @@ def scrape(store, dry_run=False, max_pages=None, time_budget=None, db=None, now=
                "written": 0, "previous_count": 0, "note": note, "blocked": blocked, "complete": complete}
     else:
         try:
-            db = db if db is not None else _connect()
-            run = _dbmod(db).write_store(db, store, offers, now or _utcnow(), blocked, started=started, note=note, complete=complete)
+            run = _write(store, offers, started, blocked, note, complete, db=db, now=now, sleep=sleep)
         except SystemExit:
             raise
         except Exception as e:
             run = {"store": store, "started": started, "status": "failed", "fetched": len(offers), "written": 0,
                    "previous_count": 0, "note": "database: " + safe_error(e)}
+            if offers and _unreachable(e):
+                _save(store, offers, started, blocked, note, complete)
+                run["note"] += "; scrape saved for replay"
     run["seconds"] = seconds
     _report(store, run)
     if run["status"] == "blocked" or (dry_run and blocked):
         return BLOCKED_EXIT, run
     return (0 if run["status"] in ("ok", "dry-run") and (not dry_run or (offers and complete)) else 1), run
+
+
+def replay_cmd(path, db=None, now=None, sleep=time.sleep):
+    """Write a scrape that `scrape` saved because the database could not be reached."""
+    saved = json.loads(pathlib.Path(path).read_text())
+    started = datetime.fromisoformat(saved["started"]) if isinstance(saved["started"], str) else saved["started"]
+    run = _write(saved["store"], saved["offers"], started, saved["blocked"], saved["note"], saved["complete"], db=db,
+                 now=now, sleep=sleep)
+    run["note"] = (run.get("note") or "") + ("; " if run.get("note") else "") + "written from a saved scrape"
+    _report(saved["store"], run)
+    if run["status"] in ("ok", "partial", "blocked"):
+        pathlib.Path(path).unlink()
+    return (0 if run["status"] == "ok" else 1), run
 
 
 def rollup_cmd(db=None, now=None):
@@ -159,6 +213,8 @@ def main(argv=None):
     s.add_argument("--max-pages", type=int)
     s.add_argument("--time-budget", type=int, help="minutes; stop cleanly and keep what was fetched")
     sub.add_parser("rollup")
+    r = sub.add_parser("replay")
+    r.add_argument("file")
     h = sub.add_parser("health")
     h.add_argument("--hours", type=int, default=26)
     a = ap.parse_args(argv)
@@ -167,6 +223,8 @@ def main(argv=None):
             return rollup_cmd()[0]
         if a.cmd == "health":
             return health_cmd(a.hours)[0]
+        if a.cmd == "replay":
+            return replay_cmd(a.file)[0]
         if a.store not in STORES:
             print(f"unknown store: {a.store}", file=sys.stderr)
             return 2

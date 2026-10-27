@@ -27,7 +27,7 @@ env:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ matrix.store == 'amazon' && 200 || 60 }}
+    timeout-minutes: ${{ matrix.store == 'amazon' && 215 || 80 }}
     strategy:
       fail-fast: false
       matrix:
@@ -55,6 +55,15 @@ jobs:
           # 3 = the store refused this machine. Old prices stay in place and the store is tried again from another
           # machine below, so this is a warning, not a failed run.
           if [ "$code" -eq 3 ]; then echo "::warning::${{ matrix.store }} refused this machine; it will be tried again from another one"; exit 0; fi
+          # The database could not be reached even after about ten minutes of waiting: the scrape was saved, so wait
+          # a little longer and write it, instead of losing an hour of fetching.
+          saved="out/${{ matrix.store }}-offers.json"
+          if [ "$code" -ne 0 ] && [ -f "$saved" ]; then
+            echo "::warning::database not reachable; writing the saved ${{ matrix.store }} scrape in 5 minutes"
+            sleep 300
+            python -m pph.run replay "$saved"
+            code=$?
+          fi
           exit $code
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

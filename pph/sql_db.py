@@ -71,13 +71,33 @@ SCHEMA = [
 ]
 
 
-def connect(url):
-    """mysql://user:password@host:3306/database -> a pymysql connection that commits each statement."""
+def _ipv4(host, port):
+    """The host's IPv4 address. GitHub's runners have no IPv6 route, and connecting to the host's IPv6 address fails
+    with "Network is unreachable" (errno 101, MySQL error 2003); the name is kept when it has no IPv4 address."""
+    import socket
+    try:
+        return socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)[0][4][0]
+    except (OSError, IndexError):
+        return host
+
+
+def connect(url, waits=(5, 15, 30), sleep=None):
+    """mysql://user:password@host:3306/database -> a pymysql connection that commits each statement. A refused or
+    unreachable server (2003) is tried again after each of `waits` seconds."""
+    import time
     import pymysql
     u = urlsplit(url)
-    return pymysql.connect(host=u.hostname, port=u.port or 3306, user=unquote(u.username or ""), password=unquote(u.password or ""),
-                           database=u.path.lstrip("/"), charset="utf8mb4", autocommit=True, connect_timeout=20, cursorclass=_retry_cursor(),
-                           read_timeout=600, write_timeout=600)
+    port = u.port or 3306
+    for attempt in range(len(waits) + 1):
+        try:
+            return pymysql.connect(host=_ipv4(u.hostname, port), port=port, user=unquote(u.username or ""),
+                                   password=unquote(u.password or ""), database=u.path.lstrip("/"), charset="utf8mb4",
+                                   autocommit=True, connect_timeout=20, cursorclass=_retry_cursor(), read_timeout=600,
+                                   write_timeout=600)
+        except pymysql.err.OperationalError as e:
+            if (e.args[0] if e.args else None) != 2003 or attempt == len(waits):
+                raise
+            (sleep or time.sleep)(waits[attempt])
 
 
 def _iso(d):
@@ -122,7 +142,12 @@ def _retry_cursor():
                         raise
                     import time
                     time.sleep(2 * (attempt + 1))
-                    self.connection.ping(reconnect=True)
+                    try:
+                        self.connection.ping(reconnect=True)
+                    except pymysql.err.OperationalError:
+                        if attempt == _tries - 2:
+                            raise                # the host is still refusing: let the caller wait longer
+                        time.sleep(10)
     return RetryCursor
 
 
