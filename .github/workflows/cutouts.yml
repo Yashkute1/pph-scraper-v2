@@ -44,7 +44,10 @@ jobs:
         run: git fetch -q --depth 1 origin cutouts5 && git show FETCH_HEAD:manifest.txt > manifest.txt || echo "no manifest yet"
       - name: List photos that still need a cutout
         env:
-          MYSQL_URL: ${{ secrets.MYSQL_URL }}          # this step only reads image addresses; it downloads nothing
+          # With DB_WRITER=hostinger the list comes from the site, which reads the database on its own server; this
+          # step then gets no database password. It only reads image addresses; it downloads nothing.
+          CUTOUT_LIST_URL: ${{ vars.DB_WRITER == 'hostinger' && 'https://pcparthunt.com/api/cutout-list' || '' }}
+          MYSQL_URL: ${{ vars.DB_WRITER != 'hostinger' && secrets.MYSQL_URL || '' }}
         run: python -m tools.cutouts list todo.txt --shard ${{ matrix.shard }}/16 --limit 500
       - uses: actions/cache@v4
         with:

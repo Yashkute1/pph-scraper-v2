@@ -56,6 +56,8 @@ def sync(repo, state, db=None, now=None, log=print):
     from pph import run as R
 
     head = pending(repo, state)
+    # When this run looked, so a quiet run (nothing new) can be told from one that never ran.
+    (state / "checked").write_text((now or datetime.now(timezone.utc)).isoformat(timespec="seconds") + "\n")
     if not head:
         return 0, {"written": [], "note": "nothing new"}
     names = [n for n in git(repo, "ls-tree", "--name-only", head).split() if n.endswith("-offers.json.gz")]
