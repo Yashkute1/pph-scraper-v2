@@ -10,6 +10,7 @@ from .facets import facets_of
 MAX_DISCOUNT = 0.85      # a bigger "discount" is almost always a mismatched or fake MRP
 DROP_MIN_DAYS = 7        # no "price dropped" claim until a week of history exists
 DROP_WINDOW = 30
+MAX_DROP = 60            # a bigger fall is almost always another part's price in the history, not a deal
 MAX_SPREAD = 60          # stores further apart than this are almost always two different parts grouped together
 
 
@@ -29,7 +30,8 @@ def _drop_pct(members, best, now):
     if len(per_day) < DROP_MIN_DAYS:
         return 0
     mid = median(per_day.values())
-    return max(0, round((mid - best["price"]) / mid * 100, 1))
+    pct = round((mid - best["price"]) / mid * 100, 1)
+    return pct if 0 < pct <= MAX_DROP else 0
 
 
 def _spread_pct(offers):
