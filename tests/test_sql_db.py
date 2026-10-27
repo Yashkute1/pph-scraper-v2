@@ -241,3 +241,24 @@ def test_rollup_joins_one_product_listed_under_two_titles(db):
     assert out["merged"] == 1
     assert q(db, "SELECT group_id, store_count, best_price FROM products") == (("ssd-crucial-1tb-ct1000p3pssd8-p3-plus", 2, 6200),)
     assert q(db, "SELECT old_id, group_id FROM group_redirects") == (("ssd-crucial-1tb-2280-ct1000p3pssd8-p3-plus", "ssd-crucial-1tb-ct1000p3pssd8-p3-plus"),)
+
+
+def test_connect_uses_ipv4_and_retries_an_unreachable_server(monkeypatch):
+    import socket
+    import pymysql
+    from pph import sql_db as S
+    seen, waits = [], []
+
+    def fake_getaddrinfo(host, port, family=0, *a, **k):
+        assert family == socket.AF_INET
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.0.2.7", port))]
+
+    def fake_connect(**kw):
+        seen.append(kw["host"])
+        if len(seen) < 3:
+            raise pymysql.err.OperationalError(2003, "Can't connect (Network is unreachable)")
+        return "conn"
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(pymysql, "connect", fake_connect)
+    assert S.connect("mysql://u:p@db.example:3306/x", sleep=waits.append) == "conn"
+    assert seen == ["192.0.2.7"] * 3 and waits == [5, 15]

@@ -161,3 +161,68 @@ def test_health_flags_only_stores_without_a_recent_good_run(env):
     code, out = R.health_cmd(26, db=db, now=NOW, stores=["a", "b", "c", "never"])
     assert (code, out["stale"]) == (1, ["b", "never"])
     assert R.health_cmd(26, db=db, now=NOW, stores=["a", "c"]) [0] == 0
+
+
+class OperationalError(Exception):
+    """Stands in for pymysql's: the scraper tells errors apart by name and number."""
+
+
+def unreachable_then(db, failures):
+    calls = {"n": 0}
+
+    def connect():
+        calls["n"] += 1
+        if calls["n"] <= failures:
+            raise OperationalError(2003, "Can't connect to MySQL server on 'host' (Network is unreachable)")
+        return db
+    return connect, calls
+
+
+def test_an_unreachable_database_is_waited_out_not_a_lost_scrape(env, monkeypatch):
+    db = mongomock.MongoClient().pph_site
+    connect, calls = unreachable_then(db, 2)
+    monkeypatch.setattr(R, "_connect", connect)
+    waits = []
+    R.ADAPTERS["fake"] = adapter([raw(1), raw(2)])
+    try:
+        code, run = R.scrape("s", now=NOW, fetcher=object(), sleep=waits.append)
+    finally:
+        R.ADAPTERS.pop("fake")
+    assert (code, run["status"], run["written"], calls["n"]) == (0, "ok", 2, 3)
+    assert waits == [30, 60]
+
+
+def test_a_scrape_the_database_never_accepts_is_saved_and_replayed(env, monkeypatch):
+    connect, _ = unreachable_then(None, 99)
+    monkeypatch.setattr(R, "_connect", connect)
+    waits = []
+    R.ADAPTERS["fake"] = adapter([raw(1), raw(2)])
+    try:
+        code, run = R.scrape("s", now=NOW, fetcher=object(), sleep=waits.append)
+    finally:
+        R.ADAPTERS.pop("fake")
+    assert (code, run["status"]) == (1, "failed")
+    assert run["note"] == "database: OperationalError 2003; scrape saved for replay"
+    assert waits == list(R.WAITS)
+    saved = env / "s-offers.json"
+    assert len(json.loads(saved.read_text())["offers"]) == 2
+
+    db = mongomock.MongoClient().pph_site
+    code, run = R.replay_cmd(saved, db=db, now=NOW)
+    assert (code, run["status"], run["written"]) == (0, "ok", 2)
+    assert db.offers.count_documents({}) == 2
+    assert not saved.exists()
+
+
+def test_other_database_errors_are_not_retried(env, monkeypatch):
+    def connect():
+        raise OperationalError(1064, "syntax")
+    monkeypatch.setattr(R, "_connect", connect)
+    waits = []
+    R.ADAPTERS["fake"] = adapter([raw(1)])
+    try:
+        code, run = R.scrape("s", now=NOW, fetcher=object(), sleep=waits.append)
+    finally:
+        R.ADAPTERS.pop("fake")
+    assert (code, run["note"], waits) == (1, "database: OperationalError 1064", [])
+    assert not (env / "s-offers.json").exists()
