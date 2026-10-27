@@ -206,6 +206,12 @@ def write_store(db, store, offers, now, blocked, started=None, note="", complete
         if ok:
             # Every offer this run saw now has last_seen = now, so "unseen" is everything older for this store.
             unseen = "store=%s AND (last_seen IS NULL OR last_seen<%s)"
+            # A part this run saw at a new address: the store moved it, and the old address now answers 404. It goes now
+            # instead of lingering as a dead "Check store" link for the 14 days an unseen offer is kept.
+            seen = sorted({o["group_id"] for o in unique.values() if o.get("group_id")})
+            for i in range(0, len(seen), BATCH):
+                part = seen[i:i + BATCH]
+                cur.execute(f"DELETE FROM offers WHERE {unseen} AND group_id IN ({', '.join(['%s'] * len(part))})", (store, now, *part))
             cur.execute(f"UPDATE offers SET missed_runs=missed_runs+1, aged_at=%s WHERE {unseen} AND (aged_at IS NULL OR aged_at<%s)", (now, store, now, now))
             cur.execute(f"UPDATE offers SET in_stock=0 WHERE {unseen} AND missed_runs>=%s", (store, now, MISSED_LIMIT))
             cur.execute(f"DELETE FROM offers WHERE {unseen} AND last_seen<%s", (store, now, now - DELETE_AFTER))

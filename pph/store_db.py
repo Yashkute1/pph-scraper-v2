@@ -93,6 +93,8 @@ def write_store(db, store, offers, now, blocked, started=None, note="", complete
         run["written"] = len(ops)
     if ok:
         unseen = {"store": store, "_id": {"$nin": list(unique)}}
+        # A part this run saw at a new address: the old address is dead, so it goes now (see sql_db.write_store).
+        db.offers.delete_many(dict(unseen, group_id={"$in": sorted({o["group_id"] for o in unique.values() if o.get("group_id")})}))
         db.offers.update_many(unseen, {"$inc": {"missed_runs": 1}})
         db.offers.update_many(dict(unseen, missed_runs={"$gte": MISSED_LIMIT}), {"$set": {"in_stock": False}})
         db.offers.delete_many(dict(unseen, last_seen={"$lt": now - DELETE_AFTER}))
