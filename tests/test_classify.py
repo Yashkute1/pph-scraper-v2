@@ -284,6 +284,37 @@ def test_fifth_sweep(title, want):
     assert type_of(title) == want
 
 
+@pytest.mark.parametrize("title,want", [
+    # 27 October live audit: things that only say they work with a laptop, desktop, motherboard or cabinet
+    ("SanDisk SDCZ73-032G-I35 32 Pen Drive Compatible with Laptop, Desktop Computer USB 2.0, USB 3.0 Metal Case", "Pen Drive"),
+    ("EVM EVMPD/16GB 16 GB OTG Drive Compatible with Desktop Computer, Laptop USB 2.0 Metal Case", "Pen Drive"),
+    ("ZEBRONICS ATC1 USB Type A to Type C Converter, USB 3.0, High-Speed Data Transfer, Backward Compatibility, Plug and Play, for Laptops | Smartphones", "Accessories"),
+    ("Speaker Lenov Legion Y7000 Y540 Y540-15 Y540-15ICH Y540-15IRH Speaker", "Accessories"),
+    ("astrum Premium SPU12T Bluetooth Soundbar 12W RMS | USB Powered 2.0 Stereo Sound Bar with Dual Drivers | BT v5.4 Compact Desktop Soundbar for PC, Laptop", "Speakers"),
+    ("epos C1 High-Fidelity USB-C Crystal-Clear Audio,Noise Reduction,Chromebook Certified Wired", "Headset"),
+    ("HG WORLD Dobe 14-IN-1 Sportwear NS-0125 For Switch OLED, V2 Console, All in One Gaming Accessory Kit", "Gaming Accessories"),
+    ("ROCKTECH 4K Mini PC Box with 2.4G/5.0G Dual WiFi,H616 Quad - Android v4.4 (KitKat), NITEL, H616, 4 GB DDR3, 32 GB 10 Mini PC", "Other"),
+    ("AtoZ Mart L298N Dual H-Bridge Motor Driver Module 5V-35V 2A Output AM1Socket SSI MEB Intel Q670 Chipset DDR2 Motherboard for Desktop", "Other"),
+    ("KAVTRON 1st Gen Processor in-tel Core i3-550 3.2GHz for H55 Motherboard LGA-1156 3.2 GHz LGA 1156 1 Core Processor Designed for Desktop, Laptop", "Processor/CPU"),
+    ("A CONNECT Z Wired Combo Keyboard Mouse for Office and Study Combo Motherboard", "Keyboard"),
+    ("Frontech 8 Channel CCTV Power Supply, 12V DC Output, Metal Body, Long Input Range AC 150~275V, Efficient Power Adapter for DVR, CCTV Camera & Security", "Other"),
+    ("Darahs Adaptor Power Supply Cord for Stage Piano's/Portable Keyboards/Piaggero Digital Worldwide Adaptor", "Other"),
+    ("TEASER Multi-Purpose Wall Cabinet, 35 x 45 cm, Double Door, Grey with Orange Handles.", "Other"),
+    ("Black Air BBQ/ Wood Stove 12V DC 23000 RPM Blower Fan with adjustable speed controller Fan with Heat Pipes Cabinet Cooler", "Other"),
+    ("Cubonic x Memo DL03 FrostEdge Compact Design Wired Cooling & Turbo Airflow Fan with Radiator Cabinet Cooler", "Fans & Cooling"),
+    # and what those rules must leave alone
+    ("TP-Link Archer TX20U Plus AX1800 Dual Antennas High Gain USB Adapter", "Networking"),
+    ("MSI GeForce RTX 5070 World of Warcraft Midnight Light OC Edition 12GB Nvidia Graphic Card", "Graphics Card"),
+    ("Logitech G435 Blue and Raspberry Wireless Gaming Headset With Mic 981-001063", "Headset"),
+    ("Dell UltraSharp U2424H 24\"FHD IPS 120Hz 5ms USB-C Hub Monitor", "Monitor"),
+    ("H55 Computer Motherboard Professional M.2 NGFF LGA 1156 Slot DDR3 8 Channel Memory 4 Phase Power Supply Gaming Motherboard", "Motherboard"),
+    ("Resident Evil Requiem Standard Edition for Nintendo Switch 2 Games | Switch 2 Physical Games Cartridge | Survival Horror Action Ad", "Games"),
+    ("Mini UPS Pro 12V 3A with Power Adapter | 6X 2600 mAh Battery | 12+ Hours Backup | Power Backup Supports Jio, Airtel and All 12V up", "UPS"),
+])
+def test_sixth_sweep(title, want):
+    assert type_of(title) == want
+
+
 def test_a_title_that_starts_with_a_maker_names_that_maker():
     from pph.normalize import brand_of
     assert brand_of("Sony PlayStation®5 Digital Edition (slim) Console Video Game & Ant Esports Dock5 RGB") == "Sony"
