@@ -107,6 +107,16 @@ def test_drop_pct_uses_lowest_price_per_day_across_stores_and_ignores_old_points
     assert row["drop_pct"] == 20.0
 
 
+def test_drop_pct_zero_when_the_fall_is_implausible():
+    # 27 Oct: a Rs 1,499 mouse showed -93% because an out-of-stock listing at Rs 20,465 filled its history
+    a = offer("a", 1499, history=hist([1499] * 3))
+    b = offer("b", 20465, in_stock=False, history=hist([20465] * 10))
+    row, = rollup([a, b], NOW)
+    assert row["drop_pct"] == 0
+    row, = rollup([offer("a", 450, history=hist([1000] * 9 + [450]))], NOW)
+    assert row["drop_pct"] == 55.0       # a real clearance price still counts
+
+
 def test_drop_pct_zero_when_nothing_in_stock():
     row, = rollup([offer("a", 900, in_stock=False, history=hist([1000] * 9 + [900]))], NOW)
     assert row["drop_pct"] == 0
