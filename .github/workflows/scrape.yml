@@ -45,19 +45,22 @@ jobs:
         run: scrapling install
       - name: Scrape ${{ matrix.store }}
         env:
-          MYSQL_URL: ${{ secrets.MYSQL_URL }}
+          # With DB_WRITER=hostinger the server writes the database (tools/hostinger_sync.py): this machine saves the
+          # scrape for the publish job and is given no database password.
+          MYSQL_URL: ${{ vars.DB_WRITER != 'hostinger' && secrets.MYSQL_URL || '' }}
+          SAVE: ${{ vars.DB_WRITER == 'hostinger' && '--save' || '' }}
         run: |
           echo "| store | status | fetched | written | previous | seconds | note |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|---|---|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
           set +e
-          python -m pph.run scrape ${{ matrix.store }} $DRY_RUN $QUICK --time-budget ${{ matrix.store == 'amazon' && 170 || 45 }}
+          python -m pph.run scrape ${{ matrix.store }} $DRY_RUN $QUICK $SAVE --time-budget ${{ matrix.store == 'amazon' && 170 || 45 }}
           code=$?
           # 3 = the store refused this machine. Old prices stay in place and the store is tried again from another
           # machine below, so this is a warning, not a failed run.
           if [ "$code" -eq 3 ]; then echo "::warning::${{ matrix.store }} refused this machine; it will be tried again from another one"; exit 0; fi
           # Hostinger's database sometimes refuses one GitHub machine for an hour while answering others. The scrape
           # was saved; the write-saved job below writes it from a different machine.
-          if [ "$code" -ne 0 ] && [ -f "out/${{ matrix.store }}-offers.json" ]; then
+          if [ "$code" -ne 0 ] && [ -z "$SAVE" ] && [ -f "out/${{ matrix.store }}-offers.json" ]; then
             echo "::warning::database not reachable from this machine; the saved ${{ matrix.store }} scrape is written from another one"
             exit 0
           fi
@@ -70,10 +73,33 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  health:
+    # With DB_WRITER=hostinger the roll-up runs on the server, so the 26-hour check reads the site instead of MySQL.
+    # It runs as each scrape starts, so it sees what the server wrote for the runs before this one.
+    if: ${{ vars.DB_WRITER == 'hostinger' && !startsWith(github.ref, 'refs/heads/dryrun/') && inputs.dry_run != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail only if a store has had no good run for a day
+        run: |
+          body=$(curl -fsS --retry 3 --retry-delay 20 'https://pcparthunt.com/healthz?deep')
+          python3 - "$body" <<'PY'
+          import json, sys
+          d = json.loads(sys.argv[1])
+          stale = d.get("stale")
+          if not d.get("ok") or stale is None:
+              sys.exit("the site could not read its database")
+          if stale:
+              with open(__import__("os").environ["GITHUB_STEP_SUMMARY"], "a") as f:
+                  f.write("No good run in the last 26 hours: " + ", ".join(stale) + "\n")
+              sys.exit("No good run in the last 26 hours: " + ", ".join(stale))
+          print("every store had a good run in the last 26 hours")
+          PY
+
   write-saved:
     # Scrapes whose machine could not reach the database are written from a new machine, with a new address.
     needs: scrape
-    if: ${{ always() && !startsWith(github.ref, 'refs/heads/dryrun/') && inputs.dry_run != true }}
+    if: ${{ always() && vars.DB_WRITER != 'hostinger' && !startsWith(github.ref, 'refs/heads/dryrun/') && inputs.dry_run != true }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -190,12 +216,13 @@ jobs:
       - run: sleep 600
       - name: Scrape ${{ matrix.store }} again
         env:
-          MYSQL_URL: ${{ secrets.MYSQL_URL }}
+          MYSQL_URL: ${{ vars.DB_WRITER != 'hostinger' && secrets.MYSQL_URL || '' }}
+          SAVE: ${{ vars.DB_WRITER == 'hostinger' && '--save' || '' }}
         run: |
           echo "| store | status | fetched | written | previous | seconds | note |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|---|---|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
           set +e
-          python -m pph.run scrape ${{ matrix.store }} --time-budget ${{ matrix.store == 'amazon' && 170 || 45 }}
+          python -m pph.run scrape ${{ matrix.store }} $SAVE --time-budget ${{ matrix.store == 'amazon' && 170 || 45 }}
           code=$?
           if [ "$code" -eq 3 ]; then echo "::warning::${{ matrix.store }} refused the second machine too; its last good prices stay in place"; exit 0; fi
           exit $code
@@ -209,7 +236,7 @@ jobs:
 
   rollup:
     needs: [scrape, retry, write-saved, write-saved-again]
-    if: ${{ always() && !startsWith(github.ref, 'refs/heads/dryrun/') && inputs.dry_run != true }}
+    if: ${{ always() && vars.DB_WRITER != 'hostinger' && !startsWith(github.ref, 'refs/heads/dryrun/') && inputs.dry_run != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -261,8 +288,44 @@ jobs:
           MYSQL_URL: ${{ secrets.MYSQL_URL }}
         run: python -m pph.run health --hours 26
 
+  publish:
+    # With DB_WRITER=hostinger: put this run's scrapes on the `scrapes` branch, where the Hostinger server picks them
+    # up and writes them to MySQL from the server itself (tools/hostinger_sync.py). The branch holds one commit,
+    # replaced each run, so the repository does not grow. A store's second try, when it has one, replaces its first.
+    needs: [scrape, retry]
+    if: ${{ always() && vars.DB_WRITER == 'hostinger' && !startsWith(github.ref, 'refs/heads/dryrun/') && inputs.dry_run != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write                # pushes the `scrapes` branch; this job receives no secrets
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: artifacts
+          pattern: out-*
+      - name: Collect one file per store
+        run: |
+          mkdir -p pub
+          for f in artifacts/out-*/*-offers.json; do [ -f "$f" ] && case "$f" in artifacts/out-retry-*) ;; *) cp "$f" pub/ ;; esac; done
+          for f in artifacts/out-retry-*/*-offers.json; do [ -f "$f" ] && cp "$f" pub/; done
+          ls pub | grep -q . || { echo "::warning::no scrape to publish"; exit 0; }
+          gzip -9 pub/*-offers.json
+          printf '{"run_id": %s, "run_number": %s, "event": "%s", "created": "%s"}\n' \
+            "${{ github.run_id }}" "${{ github.run_number }}" "${{ github.event_name }}" "$(date -u +%FT%TZ)" > pub/run.json
+          ls -la pub
+      - name: Push the scrapes branch
+        run: |
+          [ -f pub/run.json ] || exit 0
+          cd pub
+          git init -q -b scrapes
+          git config user.name "pph-bot"
+          git config user.email "pph-bot@users.noreply.github.com"
+          git add -A
+          git commit -qm "scrapes: ${{ github.event_name }} run ${{ github.run_number }}"
+          git push -q --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:scrapes
+
   report:
-    needs: [scrape, retry, write-saved, write-saved-again, rollup, rollup-again]
+    needs: [scrape, retry, write-saved, write-saved-again, rollup, rollup-again, publish]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

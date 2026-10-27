@@ -12,9 +12,9 @@ def build(root, stores, when):
         except ValueError:
             continue
         name = d.get("store") or f.stem
-        if runs.get(name, {}).get("status") not in ("ok", "dry-run"):   # a store tried twice counts by its good attempt
+        if runs.get(name, {}).get("status") not in ("ok", "dry-run", "saved"):   # a store tried twice counts by its good attempt
             runs[name] = d
-    ok = sum(1 for s in stores if runs.get(s, {}).get("status") in ("ok", "dry-run"))
+    ok = sum(1 for s in stores if runs.get(s, {}).get("status") in ("ok", "dry-run", "saved"))
     lines = [f"# Scraper status", "", f"Last run: {when}. {ok} of {len(stores)} stores ok.", "",
              "| store | status | fetched | written | previous | seconds | note |", "|---|---|---|---|---|---|---|"]
     for s in stores:

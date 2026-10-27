@@ -1,0 +1,3 @@
+# What tools/hostinger_sync.py needs on the Hostinger server: writing and rolling up only, no scraping.
+pymongo==4.10.1
+pymysql==1.1.2

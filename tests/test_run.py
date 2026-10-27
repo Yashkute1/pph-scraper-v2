@@ -214,6 +214,32 @@ def test_a_scrape_the_database_never_accepts_is_saved_and_replayed(env, monkeypa
     assert not saved.exists()
 
 
+def test_save_mode_never_connects_and_the_server_writes_it(env, monkeypatch):
+    def connect():
+        raise AssertionError("a saving scrape must not connect to the database")
+    monkeypatch.setattr(R, "_connect", connect)
+    R.ADAPTERS["fake"] = adapter([raw(1), raw(2)])
+    try:
+        code, run = R.scrape("s", now=NOW, fetcher=object(), save=True)
+    finally:
+        R.ADAPTERS.pop("fake")
+    assert (code, run["status"], run["fetched"]) == (0, "saved", 2)
+    saved = env / "s-offers.json"
+    db = mongomock.MongoClient().pph_site
+    code, run = R.replay_cmd(saved, db=db, now=NOW)
+    assert (code, run["status"], run["written"]) == (0, "ok", 2)
+
+
+def test_save_mode_still_reports_a_refusing_store(env, monkeypatch):
+    monkeypatch.setattr(R, "_connect", lambda: (_ for _ in ()).throw(AssertionError("no database")))
+    R.ADAPTERS["fake"] = adapter([], error=R.BlockedError("https://s.test/", 403, True))
+    try:
+        code, run = R.scrape("s", now=NOW, fetcher=object(), save=True)
+    finally:
+        R.ADAPTERS.pop("fake")
+    assert (code, run["status"]) == (R.BLOCKED_EXIT, "blocked")
+
+
 def test_other_database_errors_are_not_retried(env, monkeypatch):
     def connect():
         raise OperationalError(1064, "syntax")

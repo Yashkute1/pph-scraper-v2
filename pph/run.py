@@ -115,7 +115,7 @@ def _dbmod(db):
 
 
 def scrape(store, dry_run=False, max_pages=None, time_budget=None, db=None, now=None, fetcher=None, clock=time.monotonic,
-           sleep=time.sleep):
+           sleep=time.sleep, save=False):
     """Scrape one store. Returns (exit_code, run document)."""
     cfg = dict(STORES[store])
     if max_pages:
@@ -151,6 +151,12 @@ def scrape(store, dry_run=False, max_pages=None, time_budget=None, db=None, now=
     if dry_run:
         run = {"store": store, "started": started, "status": "dry-run", "fetched": len({o["url"] for o in offers}),
                "written": 0, "previous_count": 0, "note": note, "blocked": blocked, "complete": complete}
+    elif save:
+        # The database is written from the Hostinger server itself (tools/hostinger_sync.sh replays this file there),
+        # so this machine never connects to it. Hostinger's firewall refuses some GitHub machines on the MySQL port.
+        _save(store, offers, started, blocked, note, complete)
+        run = {"store": store, "started": started, "status": "blocked" if blocked else "saved" if offers else "failed",
+               "fetched": len({o["url"] for o in offers}), "written": 0, "previous_count": 0, "note": note}
     else:
         try:
             run = _write(store, offers, started, blocked, note, complete, db=db, now=now, sleep=sleep)
@@ -166,7 +172,7 @@ def scrape(store, dry_run=False, max_pages=None, time_budget=None, db=None, now=
     _report(store, run)
     if run["status"] == "blocked" or (dry_run and blocked):
         return BLOCKED_EXIT, run
-    return (0 if run["status"] in ("ok", "dry-run") and (not dry_run or (offers and complete)) else 1), run
+    return (0 if run["status"] in ("ok", "dry-run", "saved") and (not dry_run or (offers and complete)) else 1), run
 
 
 def replay_cmd(path, db=None, now=None, sleep=time.sleep):
@@ -212,6 +218,7 @@ def main(argv=None):
     s.add_argument("--dry-run", action="store_true")
     s.add_argument("--max-pages", type=int)
     s.add_argument("--time-budget", type=int, help="minutes; stop cleanly and keep what was fetched")
+    s.add_argument("--save", action="store_true", help="save to out/<store>-offers.json for the server to write; no database")
     sub.add_parser("rollup")
     r = sub.add_parser("replay")
     r.add_argument("file")
@@ -228,7 +235,7 @@ def main(argv=None):
         if a.store not in STORES:
             print(f"unknown store: {a.store}", file=sys.stderr)
             return 2
-        return scrape(a.store, a.dry_run, a.max_pages, a.time_budget * 60 if a.time_budget else None)[0]
+        return scrape(a.store, a.dry_run, a.max_pages, a.time_budget * 60 if a.time_budget else None, save=a.save)[0]
     except SystemExit as e:
         print(e, file=sys.stderr)
         return 2
