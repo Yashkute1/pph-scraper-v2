@@ -275,3 +275,23 @@ def test_a_subject_running_off_the_picture_is_not_cut_out():
     art = mask(box=(slice(0, 200), slice(40, 120)))                  # a figure from the top edge to the bottom edge
     assert model_cut(rgb, art, WHITE) is None
     assert model_cut(rgb, mask(box=(slice(60, 140), slice(50, 150))), WHITE) is not None
+
+
+def test_list_reads_the_sites_photo_list_without_a_database(tmp_path, monkeypatch):
+    import io
+    import urllib.request
+    from tools import cutouts as C
+    body = "https://a.test/img/1.jpg\tgraphics-card\tCard one\nhttps://a.test/img/2.jpg\tmonitor\tMonitor two\n"
+
+    class Resp(io.BytesIO):
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+    seen = []
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout: seen.append(req.full_url) or Resp(body.encode()))
+    monkeypatch.setenv("CUTOUT_LIST_URL", "https://site.test/api/cutout-list")
+    monkeypatch.delenv("MYSQL_URL", raising=False)
+    monkeypatch.chdir(tmp_path)
+    out = tmp_path / "todo.txt"
+    C.cmd_list(str(out), 0, 1, 10)
+    assert seen == ["https://site.test/api/cutout-list"]
+    assert [ln.split(" ")[1] for ln in out.read_text().splitlines()] == ["https://a.test/img/1.jpg", "https://a.test/img/2.jpg"]

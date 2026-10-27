@@ -472,7 +472,15 @@ def _download(url):
 
 def cmd_list(path, shard, shards, limit, only=None, match=None):
     done = parse_manifest(open("manifest.txt").read()) if os.path.exists("manifest.txt") else {}
-    if os.environ.get("MYSQL_URL"):
+    if os.environ.get("CUTOUT_LIST_URL"):
+        # The site serves the same list from the database on its own server (pcparthunt.com/api/cutout-list), so this
+        # machine needs no database connection, which Hostinger's firewall refuses to some GitHub machines.
+        import urllib.request
+        req = urllib.request.Request(os.environ["CUTOUT_LIST_URL"], headers={"User-Agent": "pph-cutouts"})
+        with urllib.request.urlopen(req, timeout=120) as r:
+            lines = r.read().decode("utf-8").splitlines()
+        docs = [dict(zip(("image", "category_slug", "title"), (ln.split("\t") + ["", "", ""])[:3])) for ln in lines if ln.strip()]
+    elif os.environ.get("MYSQL_URL"):
         import pymysql
         from pph import sql_db
         try:
