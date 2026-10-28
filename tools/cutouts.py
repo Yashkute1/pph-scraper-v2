@@ -31,6 +31,7 @@ BUSY = 0.03                                # share of the removed area with deta
 MURKY = 0.25                               # half see-through area away from the outline, as a share of the product, that stops a cut
 PALE = 0.09                                # off-white lost from inside the outline, as a share of the product, that stops a cut
 DOUBT = 0.02                               # unclear see-through area, as a share of the product, that stops a cut
+LIST_WAITS = (15, 45, 90)                 # seconds between tries at the site's photo list
 WHOLE = {"games"}                         # box art fills the picture: these photos are shown whole, never cut
 MAX_BYTES = 8 * 1024 * 1024
 MIN_KEEP, MAX_KEEP = 0.02, 0.97            # share of pixels kept; outside this the cut is not trusted
@@ -475,10 +476,22 @@ def cmd_list(path, shard, shards, limit, only=None, match=None):
     if os.environ.get("CUTOUT_LIST_URL"):
         # The site serves the same list from the database on its own server (pcparthunt.com/api/cutout-list), so this
         # machine needs no database connection, which Hostinger's firewall refuses to some GitHub machines.
+        import time
         import urllib.request
         req = urllib.request.Request(os.environ["CUTOUT_LIST_URL"], headers={"User-Agent": "pph-cutouts"})
-        with urllib.request.urlopen(req, timeout=120) as r:
-            lines = r.read().decode("utf-8").splitlines()
+        # All 16 shards ask at once; the site has answered one of them with a Cloudflare 520. Wait and ask again, and
+        # if it still fails, this shard's pictures wait for the next run instead of failing the whole job.
+        for wait in LIST_WAITS + (None,):
+            try:
+                with urllib.request.urlopen(req, timeout=120) as r:
+                    lines = r.read().decode("utf-8").splitlines()
+                break
+            except OSError as e:                          # URLError, HTTPError and timeouts are all OSErrors
+                if wait is None:
+                    print(f"::warning::the photo list could not be fetched ({type(e).__name__} {getattr(e, 'code', '')}); shard skipped")
+                    open(path, "w").close()
+                    return 0
+                time.sleep(wait)
         docs = [dict(zip(("image", "category_slug", "title"), (ln.split("\t") + ["", "", ""])[:3])) for ln in lines if ln.strip()]
     elif os.environ.get("MYSQL_URL"):
         import pymysql
