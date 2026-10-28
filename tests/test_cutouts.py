@@ -295,3 +295,33 @@ def test_list_reads_the_sites_photo_list_without_a_database(tmp_path, monkeypatc
     C.cmd_list(str(out), 0, 1, 10)
     assert seen == ["https://site.test/api/cutout-list"]
     assert [ln.split(" ")[1] for ln in out.read_text().splitlines()] == ["https://a.test/img/1.jpg", "https://a.test/img/2.jpg"]
+
+
+def test_list_waits_out_a_site_error_then_skips_the_shard(tmp_path, monkeypatch):
+    import io
+    import urllib.error
+    import urllib.request
+    from tools import cutouts as C
+    calls, waits = [], []
+
+    class Resp(io.BytesIO):
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def flaky(req, timeout):
+        calls.append(1)
+        if len(calls) < 3:
+            raise urllib.error.HTTPError(req.full_url, 520, "", {}, None)
+        return Resp(b"https://a.test/img/1.jpg\tmonitor\tMonitor\n")
+    monkeypatch.setattr(urllib.request, "urlopen", flaky)
+    monkeypatch.setattr("time.sleep", waits.append)
+    monkeypatch.setenv("CUTOUT_LIST_URL", "https://site.test/api/cutout-list")
+    monkeypatch.delenv("MYSQL_URL", raising=False)
+    monkeypatch.chdir(tmp_path)
+    C.cmd_list(str(tmp_path / "todo.txt"), 0, 1, 10)
+    assert waits == [15, 45] and (tmp_path / "todo.txt").read_text().strip().endswith("https://a.test/img/1.jpg")
+
+    calls.clear(); waits.clear()
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout: (_ for _ in ()).throw(urllib.error.URLError("down")))
+    assert C.cmd_list(str(tmp_path / "todo2.txt"), 0, 1, 10) == 0
+    assert waits == [15, 45, 90] and (tmp_path / "todo2.txt").read_text() == ""
