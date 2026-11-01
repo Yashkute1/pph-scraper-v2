@@ -1,4 +1,4 @@
-scrapling[fetchers]==0.4.15
+scrapling[fetchers]==0.5
 # The browser that `scrapling install` downloads must match patchright's version, or the stealth browser cannot start.
 patchright==1.63.0
 playwright==1.63.0
