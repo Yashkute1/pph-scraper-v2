@@ -66,7 +66,7 @@ jobs:
           fi
           exit $code
       - if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: out-${{ matrix.store }}
           path: out/
@@ -131,7 +131,7 @@ jobs:
           for f in saved/*-offers.json; do python -m pph.run replay "$f" || code=1; done
           exit $code
       - if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: saved-unwritten
           path: saved/
@@ -227,7 +227,7 @@ jobs:
           if [ "$code" -eq 3 ]; then echo "::warning::${{ matrix.store }} refused the second machine too; its last good prices stay in place"; exit 0; fi
           exit $code
       - if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: out-retry-${{ matrix.store }}
           path: out/
@@ -258,7 +258,7 @@ jobs:
           MYSQL_URL: ${{ secrets.MYSQL_URL }}
         run: python -m pph.run health --hours 26
       - if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: out-rollup
           path: out/
