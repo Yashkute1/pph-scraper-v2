@@ -6,7 +6,7 @@ from datetime import datetime
 import mongomock
 import pytest
 
-from tools.hostinger_sync import local_url, sync
+from tools.hostinger_sync import JOBS, local_url, run_job, sync
 
 NOW = datetime(2026, 10, 28, 1, 0)
 
@@ -76,3 +76,44 @@ def test_a_store_the_database_could_not_take_is_tried_again(repo, tmp_path, monk
     monkeypatch.setattr(R, "replay_cmd", real)
     code, out = sync(repo, state, db=db, now=NOW, log=lambda s: None)                        # same commit, next run
     assert code == 0 and out["try"] == 2 and db.offers.count_documents({}) == 1
+
+
+def request(repo, branch_doc):
+    (repo / "job.json").write_text(json.dumps(branch_doc))
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "job"], check=True)
+    subprocess.run(["git", "-C", str(repo), "update-ref", "refs/remotes/origin/server-jobs", "HEAD"], check=True)
+
+
+def test_a_requested_job_runs_once_and_reports(repo, tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setitem(JOBS, "rollup", lambda repo, db, now: calls.append(1) or {"products": 7})
+    state, out = tmp_path / "state", tmp_path / "exports"
+    state.mkdir()
+    assert run_job(repo, state, exports=out, now=NOW) is None                                   # no branch yet
+    request(repo, {"job": "rollup", "id": "123"})
+    assert run_job(repo, state, exports=out, now=NOW)["status"] == "ok"
+    assert run_job(repo, state, exports=out, now=NOW) is None and calls == [1]                  # once
+    done = json.loads((out / "job.json").read_text())
+    assert done["id"] == "123" and done["out"] == {"products": 7}
+
+
+@pytest.mark.parametrize("doc", [{"job": "rm -rf", "id": "1"}, {"job": "rollup", "id": "$(reboot)"}, {}])
+def test_only_listed_jobs_run(repo, tmp_path, monkeypatch, doc):
+    monkeypatch.setitem(JOBS, "rollup", lambda *a: pytest.fail("must not run"))
+    state = tmp_path / "state"
+    state.mkdir()
+    request(repo, doc)
+    result = run_job(repo, state, exports=tmp_path / "exports", now=NOW)
+    assert result["status"] == "failed" and result["note"] == "not an allowed job"
+
+
+def test_a_job_that_fails_says_so_without_the_error_text(repo, tmp_path, monkeypatch):
+    def boom(*a):
+        raise RuntimeError("mysql://user:secret@host/db")
+    monkeypatch.setitem(JOBS, "rollup", boom)
+    state = tmp_path / "state"
+    state.mkdir()
+    request(repo, {"job": "rollup", "id": "9"})
+    result = run_job(repo, state, exports=tmp_path / "exports", now=NOW)
+    assert result["status"] == "failed" and "secret" not in json.dumps(result)

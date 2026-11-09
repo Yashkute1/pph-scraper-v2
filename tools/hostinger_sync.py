@@ -6,6 +6,10 @@ GitHub scrapes each store and publishes the result on the `scrapes` branch of th
 database at 127.0.0.1 and runs the roll-up and the health check. Nothing outside the server connects to MySQL, so
 Hostinger's firewall, which refuses some GitHub machines on the MySQL port, no longer matters.
 
+After each write it refreshes the export files the site serves at /api/export/ (public product data, for the audit,
+stock check and test-sample workflows), and it runs jobs GitHub requests on the `server-jobs` branch: only the names in
+JOBS, each once. Their results appear at /api/export/job.json.
+
 The database address is the website's own: MYSQL_URL from the Node app's settings file, with the host set to
 127.0.0.1. It is never printed. Usage: python -m tools.hostinger_sync <repo dir> <state dir>"""
 import gzip
@@ -13,6 +17,7 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -21,6 +26,8 @@ from urllib.parse import urlsplit, urlunsplit
 
 SITE_ENV = pathlib.Path.home() / "domains/pcparthunt.com/hbuilds/config/.env"
 BRANCH = "origin/scrapes"
+JOBS_BRANCH = "origin/server-jobs"
+EXPORTS = pathlib.Path.home() / "pph/exports"
 TRIES = 3                  # a commit that keeps failing is given up after this many runs, so one bad file cannot loop
 
 
@@ -95,6 +102,79 @@ def sync(repo, state, db=None, now=None, log=print):
     return code, summary
 
 
+def _publish(tmp, final):
+    """Gzip `tmp` beside `final` and move it into place, so the site never serves a half-written file."""
+    part = final.with_name(final.name + ".part")
+    with open(tmp, "rb") as src, gzip.open(part, "wb", 6) as dst:
+        shutil.copyfileobj(src, dst)
+    os.replace(part, final)
+
+
+def refresh_exports(db, out=None):
+    """Rewrite the files the site serves: the audit dump and the sample for the website's tests."""
+    from tools import audit_dump, export_sample
+    out = pathlib.Path(out or EXPORTS)
+    out.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=out) as tmp:
+        tmp = pathlib.Path(tmp)
+        audit_dump.dump(db, tmp)
+        (tmp / "sample.json").write_text(json.dumps(export_sample.export_sql(db), ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        for name in ("offers.tsv", "products.tsv", "sample.json"):
+            _publish(tmp / name, out / (name + ".gz"))
+
+
+def _job_rollup(repo, db, now):
+    from pph import run as R
+    return R.rollup_cmd(db=db, now=now)[1]
+
+
+def _job_redirects(repo, db, now):
+    """Load old -> new product addresses from redirects.tsv on the `audit` branch."""
+    from pph import run as R
+    from tools import load_redirects
+    git(repo, "fetch", "-q", "--depth", "1", "origin", "+refs/heads/audit:refs/remotes/origin/audit")
+    text = git(repo, "show", "origin/audit:redirects.tsv")
+    pairs = [tuple(line.split("\t")[:2]) for line in text.splitlines() if "\t" in line]
+    when = (now or datetime.now(timezone.utc)).replace(tzinfo=None, microsecond=0)
+    return load_redirects.load(db if db is not None else R._connect(), pairs, when)
+
+
+JOBS = {"rollup": _job_rollup, "redirects": _job_redirects}
+
+
+def run_job(repo, state, exports=None, db=None, now=None):
+    """Run the job requested on the jobs branch, once. Returns its result, or None when there is nothing to do."""
+    from pph import run as R
+    try:
+        head = git(repo, "rev-parse", JOBS_BRANCH).strip()
+    except subprocess.CalledProcessError:
+        return None
+    done = state / "job-done"
+    if done.exists() and done.read_text().strip() == head:
+        return None
+    done.write_text(head + "\n")                        # before running: a job that kills the run is not repeated forever
+    try:
+        req = json.loads(git(repo, "show", f"{head}:job.json"))
+    except (subprocess.CalledProcessError, ValueError):
+        req = {}
+    name, rid = str(req.get("job")), str(req.get("id"))
+    result = {"id": rid if re.fullmatch(r"\d{1,20}", rid) else "", "job": name if name in JOBS else "", "status": "failed"}
+    if name not in JOBS or not result["id"]:
+        result["note"] = "not an allowed job"
+    else:
+        try:
+            result.update(status="ok", out=JOBS[name](repo, db, now))
+        except Exception as e:
+            result["note"] = R.safe_error(e)
+    result["at"] = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
+    out = pathlib.Path(exports or EXPORTS)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "job.json.part").write_text(json.dumps(result, default=str))
+    os.replace(out / "job.json.part", out / "job.json")
+    print(json.dumps(result, default=str))
+    return result
+
+
 def main(argv=None):
     argv = argv if argv is not None else sys.argv[1:]
     repo, state = pathlib.Path(argv[0]), pathlib.Path(argv[1])
@@ -108,7 +188,16 @@ def main(argv=None):
     from pph import run as R
     R.OUT = state / "out"                               # replay's reports go here, not into the code checkout
     try:
-        return sync(repo, state)[0]
+        code, summary = sync(repo, state)
+        job = run_job(repo, state)
+        # Only after the database changed, and once at the start so the files exist. A failure here leaves the last good files.
+        if summary.get("written") or job or not (EXPORTS / "offers.tsv.gz").exists():
+            try:
+                refresh_exports(R._connect())
+            except Exception as e:
+                print("exports:", R.safe_error(e), file=sys.stderr)
+                code = code or 1
+        return code
     except Exception as e:
         print("error:", R.safe_error(e), file=sys.stderr)
         return 1

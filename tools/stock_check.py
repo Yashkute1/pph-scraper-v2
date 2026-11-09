@@ -1,6 +1,8 @@
 """Check stock flags against the stores' own pages.
 
-    MYSQL_URL=... python -m tools.stock_check [store ...]
+    OFFERS_TSV=offers.tsv python -m tools.stock_check [store ...]
+
+offers.tsv is the site's export (pcparthunt.com/api/export/offers.tsv.gz, unzipped), so no database connection is needed.
 
 For each store: opens a sample of offers the database marks in stock and reports what the product page says
 (JSON-LD availability, out-of-stock wording), then reads the first listing page and shows every card whose text
@@ -11,7 +13,6 @@ import random
 import re
 import sys
 
-from pph import sql_db
 from pph.adapters.html_listing import _OOS, _card, _from_detail
 from pph.fetch import BlockedError, Fetcher_
 from pph.stores import STORES
@@ -30,10 +31,15 @@ def _snips(text, n=2):
     return [text[max(0, m.start() - 50):m.end() + 30] for m in list(_OOS.finditer(text))[:n]]
 
 
-def product_pages(store, cfg, db, fetcher):
-    with db.cursor() as cur:
-        cur.execute("SELECT url, title, price FROM offers WHERE store=%s AND in_stock=1", (store,))
-        rows = cur.fetchall()
+def in_stock(path, store):
+    """(url, title, price) of a store's offers marked in stock, from the export."""
+    with open(path, encoding="utf-8") as f:
+        head = f.readline().rstrip("\n").split("\t")
+        rows = (dict(zip(head, line.rstrip("\n").split("\t"))) for line in f)
+        return [(r["url"], r["title"], r["price"]) for r in rows if r.get("store") == store and r.get("in_stock") == "1"]
+
+
+def product_pages(store, cfg, rows, fetcher):
     random.seed(7)
     picked = random.sample(rows, min(SAMPLE, len(rows)))
     tally = {"ld_out": 0, "ld_in": 0, "text_oos": 0, "blocked": 0}
@@ -141,14 +147,14 @@ def inspect(store, urls, search=None, searches_all=(), targets=frozenset()):
 
 
 def main(stores):
-    db = sql_db.connect(os.environ["MYSQL_URL"])
+    path = os.environ["OFFERS_TSV"]
     for store in stores or list(STORES):
         cfg = STORES[store]
         print(f"\n######## {store} ({cfg['adapter']}, {cfg['mode']})", flush=True)
         fetcher = Fetcher_(cfg["mode"], (1, 2))
         listing(store, cfg, fetcher)
         woo_api(store, cfg, fetcher)
-        product_pages(store, cfg, db, fetcher)
+        product_pages(store, cfg, in_stock(path, store), fetcher)
         sys.stdout.flush()
 
 

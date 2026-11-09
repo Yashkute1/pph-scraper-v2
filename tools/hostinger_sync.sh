@@ -17,10 +17,11 @@ main() {
   fi
   trap 'rmdir "$state/lock" 2>/dev/null' EXIT
 
-  # The scrapes branch appears with the first published scrape; until then only main is fetched.
-  git -C "$code" fetch -q --depth 1 origin +refs/heads/main:refs/remotes/origin/main \
-      +refs/heads/scrapes:refs/remotes/origin/scrapes 2>/dev/null ||
-    git -C "$code" fetch -q --depth 1 origin +refs/heads/main:refs/remotes/origin/main 2>>"$log"
+  git -C "$code" fetch -q --depth 1 origin +refs/heads/main:refs/remotes/origin/main 2>>"$log"
+  # These two appear with the first published scrape and the first requested job, so a missing one is not an error.
+  for b in scrapes server-jobs; do
+    git -C "$code" fetch -q --depth 1 origin "+refs/heads/$b:refs/remotes/origin/$b" 2>/dev/null
+  done
   git -C "$code" reset -q --hard origin/main
 
   want=$(cksum < "$code/requirements-server.txt")

@@ -9,9 +9,9 @@ import pathlib
 from pph import sql_db
 
 
-def main():
-    db = sql_db.connect(os.environ["MYSQL_URL"])
-    out = pathlib.Path("audit"); out.mkdir(exist_ok=True)
+def dump(db, out):
+    """Write offers.tsv and products.tsv into the directory `out`."""
+    out = pathlib.Path(out)
     with db.cursor() as cur, open(out / "offers.tsv", "w", encoding="utf-8") as f:
         cur.execute("SELECT o.store, o.category, o.price, o.in_stock, o.group_id, REPLACE(REPLACE(o.title, '\t', ' '), '\n', ' '), "
                     "o.url, o.mrp, o.last_seen, o.missed_runs, o.image <> '', o.brand "
@@ -29,6 +29,11 @@ def main():
         for r in cur.fetchall():
             f.write("\t".join(str(x) for x in r) + "\n"); n += 1
     print(n, "products")
+
+
+def main():
+    out = pathlib.Path("audit"); out.mkdir(exist_ok=True)
+    dump(sql_db.connect(os.environ["MYSQL_URL"]), out)
 
 
 if __name__ == "__main__":

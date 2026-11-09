@@ -273,3 +273,20 @@ def test_an_address_the_store_moved_goes_at_once(db):
     urls = {r[0] for r in q(db, "SELECT url FROM offers")}
     assert "https://a.test/p/0" not in urls and "https://a.test/p/0-new" in urls
     assert "https://a.test/p/4" in urls                                          # an unseen part still ages as before
+
+
+def test_server_exports_are_written_from_the_database(db, tmp_path):
+    import gzip
+    from pph.sql_db import write_store
+    from pph.run import rollup_cmd
+    from tools.hostinger_sync import refresh_exports
+    write_store(db, "a", [o("a", n) for n in range(3)], day(0), blocked=False)
+    rollup_cmd(db=db, now=day(0))
+    refresh_exports(db, tmp_path / "exports")
+    offers = gzip.decompress((tmp_path / "exports/offers.tsv.gz").read_bytes()).decode().splitlines()
+    assert offers[0].startswith("store\tcategory\tprice\tin_stock") and len(offers) == 4
+    products = gzip.decompress((tmp_path / "exports/products.tsv.gz").read_bytes()).decode().splitlines()
+    assert len(products) == 4
+    sample = json.loads(gzip.decompress((tmp_path / "exports/sample.json.gz").read_bytes()))
+    assert len(sample["products"]) == 3 and len(sample["offers"]) == 3
+    assert sorted(p.name for p in (tmp_path / "exports").iterdir()) == ["offers.tsv.gz", "products.tsv.gz", "sample.json.gz"]

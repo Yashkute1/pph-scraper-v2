@@ -33,9 +33,11 @@ jobs:
       - run: pip install -r requirements.txt
       - if: matrix.store == 'amazon'
         run: scrapling install
+      - name: Fetch the offers from the site
+        run: curl -fsS --retry 5 --retry-delay 20 --retry-all-errors https://pcparthunt.com/api/export/offers.tsv.gz | gunzip > "$RUNNER_TEMP/offers.tsv"
       - name: Check ${{ matrix.store }}
         if: inputs.stores == '' || contains(format(' {0} ', inputs.stores), format(' {0} ', matrix.store))
         env:
-          MYSQL_URL: ${{ secrets.MYSQL_URL }}
+          OFFERS_TSV: ${{ runner.temp }}/offers.tsv
           URLS: ${{ inputs.urls }}
         run: python -m tools.stock_check ${{ matrix.store }} $URLS

@@ -6,26 +6,17 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-
-concurrency:
-  group: scrape-live                # never at the same time as a scrape run that writes
-  cancel-in-progress: false
+  contents: write                    # pushes the request to the `server-jobs` branch; this workflow receives no database secret
 
 jobs:
   rollup:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: '3.12'
-          cache: pip
-      - run: pip install -r requirements.txt
-      - name: Roll up
+      - name: Roll up on the Hostinger server
         env:
-          MYSQL_URL: ${{ secrets.MYSQL_URL }}
-        run: python -m pph.run rollup
+          GITHUB_TOKEN: ${{ github.token }}
+        run: sh tools/request_server_job.sh rollup
