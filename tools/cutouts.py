@@ -476,6 +476,7 @@ def cmd_list(path, shard, shards, limit, only=None, match=None):
     if os.environ.get("CUTOUT_LIST_URL"):
         # The site serves the same list from the database on its own server (pcparthunt.com/api/cutout-list), so this
         # machine needs no database connection, which Hostinger's firewall refuses to some GitHub machines.
+        import http.client
         import time
         import urllib.request
         req = urllib.request.Request(os.environ["CUTOUT_LIST_URL"], headers={"User-Agent": "pph-cutouts"})
@@ -486,7 +487,7 @@ def cmd_list(path, shard, shards, limit, only=None, match=None):
                 with urllib.request.urlopen(req, timeout=120) as r:
                     lines = r.read().decode("utf-8").splitlines()
                 break
-            except OSError as e:                          # URLError, HTTPError and timeouts are all OSErrors
+            except (OSError, ValueError, http.client.HTTPException) as e:   # refused, timed out, or cut off part-way
                 if wait is None:
                     print(f"::warning::the photo list could not be fetched ({type(e).__name__} {getattr(e, 'code', '')}); shard skipped")
                     open(path, "w").close()
