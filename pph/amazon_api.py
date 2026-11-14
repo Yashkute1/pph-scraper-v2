@@ -1,4 +1,5 @@
 """What Amazon's Creators API says about a product, and what that means for a scraped offer. Pure, no I/O."""
+import http.client
 import json
 import re
 import time
@@ -76,8 +77,11 @@ def _post(url, body, headers):
         with urllib.request.urlopen(req, timeout=30) as r:
             return r.status, r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
-        return e.code, e.read().decode("utf-8", "replace")
-    except (urllib.error.URLError, OSError) as e:
+        try:
+            return e.code, e.read().decode("utf-8", "replace")
+        except (OSError, http.client.HTTPException) as e2:
+            raise ApiStop(f"network {type(e2).__name__}") from None
+    except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
         raise ApiStop(f"network {type(e).__name__}") from None
 
 

@@ -204,3 +204,31 @@ def test_network_error_becomes_stop(monkeypatch):
     with pytest.raises(ApiStop) as e:
         amazon_api._post("https://x.test/", {}, {})
     assert str(e.value) == "network URLError" and SECRET not in str(e.value)
+
+
+def test_other_transport_failures_become_stop(monkeypatch):
+    import http.client
+    import io
+    import urllib.error
+    import urllib.request
+    from pph import amazon_api
+
+    def raiser(exc):
+        def f(*a, **k):
+            raise exc
+        return f
+    for exc, name in [(http.client.IncompleteRead(b"x"), "IncompleteRead"),
+                      (http.client.BadStatusLine(SECRET), "BadStatusLine")]:
+        monkeypatch.setattr(urllib.request, "urlopen", raiser(exc))
+        with pytest.raises(ApiStop) as e:
+            amazon_api._post("https://x.test/", {}, {})
+        assert str(e.value) == f"network {name}" and SECRET not in str(e.value)
+
+    class BadBody(io.BytesIO):
+        def read(self, *a):
+            raise ConnectionResetError(SECRET)
+    err = urllib.error.HTTPError("https://x.test/", 500, "x", {}, BadBody())
+    monkeypatch.setattr(urllib.request, "urlopen", raiser(err))
+    with pytest.raises(ApiStop) as e:
+        amazon_api._post("https://x.test/", {}, {})
+    assert str(e.value) == "network ConnectionResetError" and SECRET not in str(e.value)
