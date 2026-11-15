@@ -19,6 +19,12 @@ def test_classify_kinds():
     assert classify(item("AVAILABLE_DATE"))[0] == "other"
 
 
+def test_scarce_listing_is_in_stock():
+    assert classify(item("IN_STOCK_SCARCE", 1499.0)) == ("in_stock", 1499.0)
+    got = apply({"price": 1000, "mrp": 1200, "in_stock": False}, *classify(item("IN_STOCK_SCARCE", 1499.0)))
+    assert (got["price"], got["in_stock"]) == (1499, True)
+
+
 def test_missing_item_or_listing():
     assert classify(None) == ("missing", None)
     assert classify({"asin": "B0X"}) == ("missing", None)
@@ -275,6 +281,16 @@ def test_enrich_corrects_and_counts():
     assert out[4] == offers[4]
     assert offers[0]["price"] == 1000               # inputs untouched
     assert note == "api: 3 of 4 checked, 1 out of stock, 1 other (AVAILABLE_DATE:1), 1 not returned"
+
+
+def test_scarce_is_in_stock_and_not_counted_as_other():
+    api = FakeApi({"B000000001": api_item("B000000001", "IN_STOCK_SCARCE", 1499.0),
+                   "B000000002": api_item("B000000002", "AVAILABLE_DATE", 900.0),
+                   "B000000003": api_item("B000000003", "IN_STOCK", 700.0)})
+    out, note = enrich([offer("B000000001", in_stock=False), offer("B000000002"), offer("B000000003")], api)
+    assert (out[0]["price"], out[0]["in_stock"]) == (1499, True)
+    assert "1 other (AVAILABLE_DATE:1)" in note
+    assert "IN_STOCK_SCARCE" not in note
 
 
 def test_preorder_and_odd_type_names():
