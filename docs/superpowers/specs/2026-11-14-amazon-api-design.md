@@ -49,6 +49,7 @@ C. API for known products plus a once-a-day scrape for discovery. Needs the know
   scraper's values".
 - Rules per product, from the buy-box listing (else the first listing):
   - IN_STOCK: in stock, price from the API.
+  - IN_STOCK_SCARCE (few left) counts as IN_STOCK.
   - OUT_OF_STOCK, or no listing: not in stock, scraper's price kept as the last seen price.
   - PREORDER: not in stock (it cannot be bought today). Builder call, easy to change.
   - Any other type (for example AVAILABLE_DATE, seen once with a normal price): keep the scraper's stock flag, take the API

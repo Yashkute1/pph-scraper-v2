@@ -24,15 +24,16 @@ def _listing(item):
 
 
 def classify(item):
-    """(kind, price) for one API item. Kind is in_stock, out_of_stock, preorder, other, or missing (no offer known).
+    """(kind, price) for one API item. Kind is in_stock (IN_STOCK or IN_STOCK_SCARCE), out_of_stock, preorder, other,
+    or missing (no offer known).
     The price is the buy-box listing's (else the first listing's), None when absent or not above 0."""
     listing = _listing(item)
     if listing is None:
         return "missing", None
     amount = ((listing.get("price") or {}).get("money") or {}).get("amount")
     price = round(amount) if isinstance(amount, (int, float)) and amount > 0 else None
-    kind = {"IN_STOCK": "in_stock", "OUT_OF_STOCK": "out_of_stock", "PREORDER": "preorder"}.get(
-        (listing.get("availability") or {}).get("type"), "other")
+    kind = {"IN_STOCK": "in_stock", "IN_STOCK_SCARCE": "in_stock", "OUT_OF_STOCK": "out_of_stock",
+            "PREORDER": "preorder"}.get((listing.get("availability") or {}).get("type"), "other")
     return kind, price
 
 
