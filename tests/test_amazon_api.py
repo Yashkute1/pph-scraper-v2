@@ -232,3 +232,102 @@ def test_other_transport_failures_become_stop(monkeypatch):
     with pytest.raises(ApiStop) as e:
         amazon_api._post("https://x.test/", {}, {})
     assert str(e.value) == "network ConnectionResetError" and SECRET not in str(e.value)
+
+
+# ---- enrich: corrected offers and a short note ----
+from pph.amazon_api import enrich, enrich_from_env
+
+
+def lst(type_, amount=None):
+    return {"availability": {"type": type_}, "isBuyBoxWinner": True, "price": {"money": {"amount": amount}}}
+
+
+def api_item(asin, type_=None, amount=None):
+    return {"asin": asin, "offersV2": {"listings": [lst(type_, amount)]}} if type_ else {"asin": asin}
+
+
+def offer(asin, price=1000, mrp=1200, in_stock=True):
+    return {"url": f"https://www.amazon.in/dp/{asin}", "price": price, "mrp": mrp, "in_stock": in_stock}
+
+
+class FakeApi:
+    def __init__(self, items, stop_on_batch=None):
+        self.items, self.batches, self.stop_on_batch = items, [], stop_on_batch
+
+    def get_items(self, asins):
+        self.batches.append(list(asins))
+        if self.stop_on_batch == len(self.batches):
+            raise ApiStop("HTTP 429")
+        return {a: self.items[a] for a in asins if a in self.items}
+
+
+def test_enrich_corrects_and_counts():
+    offers = [offer("B000000001"), offer("B000000002"), offer("B000000003"), offer("B000000004"),
+              {"url": "https://x.test/p/1", "price": 5, "mrp": 5, "in_stock": True}]
+    api = FakeApi({"B000000001": api_item("B000000001", "IN_STOCK", 1499.0),
+                   "B000000002": api_item("B000000002", "OUT_OF_STOCK"),
+                   "B000000004": api_item("B000000004", "AVAILABLE_DATE", 900.0)})
+    out, note = enrich(offers, api)
+    assert (out[0]["price"], out[0]["in_stock"]) == (1499, True)
+    assert (out[1]["price"], out[1]["in_stock"]) == (1000, False)
+    assert out[2] == offers[2]                      # not returned: scraped values kept
+    assert (out[3]["price"], out[3]["in_stock"]) == (900, True)
+    assert out[4] == offers[4]
+    assert offers[0]["price"] == 1000               # inputs untouched
+    assert note == "api: 3 of 4 checked, 1 out of stock, 1 other (AVAILABLE_DATE:1), 1 not returned"
+
+
+def test_preorder_and_odd_type_names():
+    api = FakeApi({"B000000001": api_item("B000000001", "PREORDER", 10.0),
+                   "B000000002": api_item("B000000002", "weird type!", 800.0)})
+    out, note = enrich([offer("B000000001"), offer("B000000002")], api)
+    assert out[0]["in_stock"] is False
+    assert note == "api: 2 of 2 checked, 1 preorder, 1 other (OTHER:1)"
+
+
+def test_same_asin_twice_is_asked_once():
+    api = FakeApi({"B000000001": api_item("B000000001", "IN_STOCK", 1499.0)})
+    out, note = enrich([offer("B000000001"), offer("B000000001", price=7)], api)
+    assert api.batches == [["B000000001"]]
+    assert [o["price"] for o in out] == [1499, 1499]
+    assert note == "api: 2 of 2 checked"
+
+
+def test_batches_of_ten():
+    asins = [f"B{n:09d}" for n in range(25)]
+    api = FakeApi({a: api_item(a, "IN_STOCK", 1.0) for a in asins})
+    enrich([offer(a) for a in asins], api)
+    assert [len(b) for b in api.batches] == [10, 10, 5]
+
+
+def test_stop_midway_keeps_earlier_corrections():
+    asins = [f"B{n:09d}" for n in range(25)]
+    api = FakeApi({a: api_item(a, "IN_STOCK", 1499.0) for a in asins}, stop_on_batch=2)
+    out, note = enrich([offer(a) for a in asins], api)
+    assert [o["price"] for o in out] == [1499] * 10 + [1000] * 15
+    assert note == "api: stopped after 10 of 25"
+
+
+def test_item_without_offers_is_missing_not_a_crash():
+    api = FakeApi({"B000000001": {"asin": "B000000001"},
+                   "B000000002": {"asin": "B000000002", "errors": [{"code": "ItemNotAccessible"}]}})
+    out, note = enrich([offer("B000000001"), offer("B000000002")], api)
+    assert [o["in_stock"] for o in out] == [False, False]
+    assert note == "api: 2 of 2 checked, 2 out of stock"
+
+
+class Boom:
+    def __init__(self, *a, **k): raise RuntimeError(SECRET)
+
+
+def test_enrich_from_env(monkeypatch):
+    offers = [offer("B000000001")]
+    calls = []
+    monkeypatch.setattr("pph.amazon_api._post", lambda *a: calls.append(a))
+    assert enrich_from_env(offers, env={}) == (offers, "")
+    assert calls == []
+    monkeypatch.setattr("pph.amazon_api.AmazonApi", Boom)
+    out, note = enrich_from_env(offers, env=ENV)
+    assert out is offers or out == offers
+    assert note == "api: unavailable (RuntimeError)"
+    assert SECRET not in note and CID not in note

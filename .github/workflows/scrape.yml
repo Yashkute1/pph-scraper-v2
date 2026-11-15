@@ -49,6 +49,11 @@ jobs:
           # scrape for the publish job and is given no database password.
           MYSQL_URL: ${{ vars.DB_WRITER != 'hostinger' && secrets.MYSQL_URL || '' }}
           SAVE: ${{ vars.DB_WRITER == 'hostinger' && '--save' || '' }}
+          # Amazon prices and stock come from its Creators API; every other store gets empty values and ignores them.
+          AMAZON_CREATORS_CREDENTIAL_ID: ${{ matrix.store == 'amazon' && secrets.AMAZON_CREATORS_CREDENTIAL_ID || '' }}
+          AMAZON_CREATORS_CREDENTIAL_SECRET: ${{ matrix.store == 'amazon' && secrets.AMAZON_CREATORS_CREDENTIAL_SECRET || '' }}
+          AMAZON_CREATORS_CREDENTIAL_VERSION: ${{ matrix.store == 'amazon' && vars.AMAZON_CREATORS_CREDENTIAL_VERSION || '' }}
+          AMAZON_PARTNER_TAG: ${{ matrix.store == 'amazon' && vars.AMAZON_PARTNER_TAG || '' }}
         run: |
           echo "| store | status | fetched | written | previous | seconds | note |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|---|---|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
@@ -218,6 +223,11 @@ jobs:
         env:
           MYSQL_URL: ${{ vars.DB_WRITER != 'hostinger' && secrets.MYSQL_URL || '' }}
           SAVE: ${{ vars.DB_WRITER == 'hostinger' && '--save' || '' }}
+          # Amazon prices and stock come from its Creators API; every other store gets empty values and ignores them.
+          AMAZON_CREATORS_CREDENTIAL_ID: ${{ matrix.store == 'amazon' && secrets.AMAZON_CREATORS_CREDENTIAL_ID || '' }}
+          AMAZON_CREATORS_CREDENTIAL_SECRET: ${{ matrix.store == 'amazon' && secrets.AMAZON_CREATORS_CREDENTIAL_SECRET || '' }}
+          AMAZON_CREATORS_CREDENTIAL_VERSION: ${{ matrix.store == 'amazon' && vars.AMAZON_CREATORS_CREDENTIAL_VERSION || '' }}
+          AMAZON_PARTNER_TAG: ${{ matrix.store == 'amazon' && vars.AMAZON_PARTNER_TAG || '' }}
         run: |
           echo "| store | status | fetched | written | previous | seconds | note |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|---|---|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
