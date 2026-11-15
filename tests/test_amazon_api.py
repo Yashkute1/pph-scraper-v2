@@ -321,7 +321,7 @@ def test_stop_midway_keeps_earlier_corrections():
     api = FakeApi({a: api_item(a, "IN_STOCK", 1499.0) for a in asins}, stop_on_batch=2)
     out, note = enrich([offer(a) for a in asins], api)
     assert [o["price"] for o in out] == [1499] * 10 + [1000] * 15
-    assert note == "api: stopped after 10 of 25"
+    assert note == "api: stopped after 10 of 25 (HTTP 429)"
 
 
 def test_item_without_offers_is_missing_not_a_crash():
@@ -347,3 +347,123 @@ def test_enrich_from_env(monkeypatch):
     assert out is offers or out == offers
     assert note == "api: unavailable (RuntimeError)"
     assert SECRET not in note and CID not in note
+
+
+# ---- final review fixes ----
+import math
+
+
+def many(n, kinds):
+    """n offers and a FakeApi whose items follow kinds(i) -> an api item."""
+    asins = [f"B{i:09d}" for i in range(n)]
+    return [offer(a) for a in asins], FakeApi({a: kinds(i, a) for i, a in enumerate(asins)})
+
+
+def test_deadline_between_batches_stops_with_time_limit():
+    asins = [f"B{n:09d}" for n in range(25)]
+    api = FakeApi({a: api_item(a, "IN_STOCK", 1499.0) for a in asins})
+    ticks = iter([0, 0, 100])                       # checked before batch 1, 2, 3
+    out, note = enrich([offer(a) for a in asins], api, deadline=50, clock=lambda: next(ticks))
+    assert len(api.batches) == 2
+    assert [o["price"] for o in out] == [1499] * 20 + [1000] * 5
+    assert note == "api: stopped after 20 of 25 (time limit)"
+
+
+def test_stop_on_first_batch_names_the_reason():
+    api = FakeApi({}, stop_on_batch=1)
+    out, note = enrich([offer("B000000001")], api)
+    assert out == [offer("B000000001")]
+    assert note == "api: stopped after 0 of 1 (HTTP 429)"
+
+
+def test_mostly_missing_answer_is_not_trusted():
+    offers, api = many(30, lambda i, a: api_item(a) if i < 20 else api_item(a, "IN_STOCK", 1499.0))
+    out, note = enrich(offers, api)
+    assert all(o["in_stock"] for o in out)
+    assert [o["price"] for o in out] == [1000] * 20 + [1499] * 10
+    assert "missing ignored: 20 of 30" in note
+
+
+def test_some_missing_still_goes_out_of_stock():
+    offers, api = many(30, lambda i, a: api_item(a) if i < 10 else api_item(a, "IN_STOCK", 1499.0))
+    out, note = enrich(offers, api)
+    assert [o["in_stock"] for o in out] == [False] * 10 + [True] * 20
+    assert "missing ignored" not in note and "10 out of stock" in note
+
+
+def test_missing_guard_needs_twenty_items():
+    offers, api = many(19, lambda i, a: api_item(a))
+    out, note = enrich(offers, api)
+    assert not any(o["in_stock"] for o in out)
+    assert "missing ignored" not in note
+
+
+def test_missing_guard_applies_to_a_stopped_run():
+    asins = [f"B{n:09d}" for n in range(25)]
+    api = FakeApi({a: api_item(a) for a in asins}, stop_on_batch=3)
+    out, note = enrich([offer(a) for a in asins], api)
+    assert all(o["in_stock"] for o in out)          # 20 returned, all missing: ignored
+
+
+def test_error_code_equal_to_a_secret_never_reaches_the_stop():
+    for echoed in (SECRET, CID, "shadow-21"):
+        body = json.dumps({"errors": [{"code": echoed}]})
+        f = Fake(TOKEN_OK, (403, body))
+        with pytest.raises(ApiStop) as e:
+            api_for(f).get_items(["B000000001"])
+        assert str(e.value) == "HTTP 403"
+        _, note = enrich([offer("B000000001")], api_for(Fake(TOKEN_OK, (403, body))))
+        assert note == "api: stopped after 0 of 1 (HTTP 403)"
+    f = Fake(TOKEN_OK, (403, json.dumps({"errors": [{"code": "AssociateNotEligible"}]})))
+    _, note = enrich([offer("B000000001")], api_for(f))
+    assert note == "api: stopped after 0 of 1 (HTTP 403 AssociateNotEligible)"
+
+
+def api_for(f):
+    return AmazonApi(credentials(ENV), post=f.post, sleep=f.sleep, clock=f.clock)
+
+
+def test_malformed_items_cost_only_themselves():
+    bad = {"B000000002": {"offersV2": {"listings": ["text"]}},
+           "B000000003": {"offersV2": {"listings": {"a": 1}}},
+           "B000000004": {"offersV2": {"listings": [{"availability": {"type": {"x": 1}}}]}}}
+    good = api_item("B000000001", "IN_STOCK", 1499.0)
+    api = FakeApi({"B000000001": good, **bad})
+    offers = [offer(a) for a in ("B000000001", "B000000002", "B000000003", "B000000004")]
+    out, note = enrich(offers, api)
+    assert out[0]["price"] == 1499 and out[1:] == offers[1:]
+    assert note == "api: 1 of 4 checked, 3 unreadable"
+
+
+def test_unusable_amounts():
+    for amount in (math.inf, -math.inf, math.nan, True):
+        assert classify(item("IN_STOCK", amount)) == ("in_stock", None)
+
+
+def test_currency():
+    it = item("IN_STOCK", 1499.0)
+    it["offersV2"]["listings"][0]["price"]["money"]["currency"] = "USD"
+    assert classify(it) == ("in_stock", None)
+    it["offersV2"]["listings"][0]["price"]["money"]["currency"] = "INR"
+    assert classify(it) == ("in_stock", 1499.0)
+    assert classify(item("IN_STOCK", 1499.0)) == ("in_stock", 1499.0)       # no currency given
+
+
+def test_end_to_end_with_a_real_client():
+    f = Fake(TOKEN_OK, (200, json.dumps({"itemsResult": {"items": [
+        api_item("B000000001", "IN_STOCK", 1499.0), api_item("B000000002", "OUT_OF_STOCK"),
+        api_item("B000000003", "IN_STOCK_SCARCE", 700.0)]}})))
+    offers = [offer("B000000001"), offer("B000000002"), offer("B000000003", in_stock=False)]
+    out, note = enrich_from_env(offers, env=ENV, post=f.post, sleep=f.sleep, clock=f.clock)
+    assert [(o["price"], o["in_stock"]) for o in out] == [(1499, True), (1000, False), (700, True)]
+    assert note == "api: 3 of 3 checked, 1 out of stock"
+    assert "Authorization" not in f.calls[0][2] and f.calls[1][2]["Authorization"] == "Bearer T"
+    assert SECRET not in note and CID not in note
+
+
+def test_token_without_expires_in_is_reused():
+    f = Fake((200, json.dumps({"access_token": "T"})), ok_items("B000000001"), ok_items("B000000002"))
+    api = api_for(f)
+    api.get_items(["B000000001"])
+    api.get_items(["B000000002"])
+    assert sum("/auth/o2/token" in c[0] for c in f.calls) == 1
