@@ -252,3 +252,45 @@ def test_other_database_errors_are_not_retried(env, monkeypatch):
         R.ADAPTERS.pop("fake")
     assert (code, run["note"], waits) == (1, "database: OperationalError 1064", [])
     assert not (env / "s-offers.json").exists()
+
+
+def amazon_offer(asin): return {"title": f"Corsair Vengeance {asin} 16GB DDR5 RAM Kit", "price": 4000, "url": f"https://amazon.in/dp/{asin}", "image": "i"}
+
+
+def test_amazon_scrape_uses_the_api_and_still_works_without_it(env, monkeypatch):
+    import pph.amazon_api as A
+    monkeypatch.setitem(R.STORES, "amazon", dict(CFG))
+    seen = []
+    def fake(offers):
+        seen.append(len(offers))
+        return [dict(o, price=1234) for o in offers], "api: 2 of 2 checked"
+    monkeypatch.setattr(A, "enrich_from_env", fake)
+    items = [amazon_offer("B000000001"), amazon_offer("B000000002")]
+    R.ADAPTERS["fake"] = adapter(items)
+    try:
+        db = mongomock.MongoClient().pph_site
+        code, run = R.scrape("amazon", db=db, now=NOW, fetcher=object())
+    finally:
+        R.ADAPTERS.pop("fake")
+    assert (code, run["status"], seen) == (0, "ok", [2])
+    assert {d["price"] for d in db.offers.find()} == {1234}
+    assert "api: 2 of 2 checked" in run["note"]
+
+    def boom(offers): raise RuntimeError("secret-text")
+    monkeypatch.setattr(A, "enrich_from_env", boom)
+    R.ADAPTERS["fake"] = adapter(items)
+    try:
+        db = mongomock.MongoClient().pph_site
+        code, run = R.scrape("amazon", db=db, now=NOW, fetcher=object())
+    finally:
+        R.ADAPTERS.pop("fake")
+    assert (code, run["status"]) == (0, "ok")
+    assert {d["price"] for d in db.offers.find()} == {4000}
+    assert "RuntimeError" in run["note"] and "secret-text" not in run["note"]
+
+
+def test_other_stores_never_call_the_api(env, monkeypatch):
+    import pph.amazon_api as A
+    monkeypatch.setattr(A, "enrich_from_env", lambda offers: pytest.fail("called"))
+    code, run = go([raw(1)], mongomock.MongoClient().pph_site)
+    assert (code, run["status"]) == (0, "ok")

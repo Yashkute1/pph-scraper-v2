@@ -1,6 +1,8 @@
 """What Amazon's Creators API says about a product, and what that means for a scraped offer. Pure, no I/O."""
+import collections
 import http.client
 import json
+import os
 import re
 import time
 import urllib.error
@@ -15,13 +17,18 @@ def asin_of(url):
     return m.group(1) if m else None
 
 
+def _listing(item):
+    """The buy-box listing of an item (else its first listing), or None."""
+    listings = ((item or {}).get("offersV2") or {}).get("listings") or []
+    return next((l for l in listings if l.get("isBuyBoxWinner")), listings[0]) if listings else None
+
+
 def classify(item):
     """(kind, price) for one API item. Kind is in_stock, out_of_stock, preorder, other, or missing (no offer known).
     The price is the buy-box listing's (else the first listing's), None when absent or not above 0."""
-    listings = ((item or {}).get("offersV2") or {}).get("listings") or []
-    if not listings:
+    listing = _listing(item)
+    if listing is None:
         return "missing", None
-    listing = next((l for l in listings if l.get("isBuyBoxWinner")), listings[0])
     amount = ((listing.get("price") or {}).get("money") or {}).get("amount")
     price = round(amount) if isinstance(amount, (int, float)) and amount > 0 else None
     kind = {"IN_STOCK": "in_stock", "OUT_OF_STOCK": "out_of_stock", "PREORDER": "preorder"}.get(
@@ -170,3 +177,67 @@ class AmazonApi:
             return {i["asin"]: i for i in items if isinstance(i, dict) and isinstance(i.get("asin"), str)}
         except (ValueError, KeyError, TypeError, AttributeError):
             raise ApiStop("answer unusable") from None
+
+
+# ---- enrich a scrape ----
+_TYPE_NAME = re.compile(r"[A-Z_]{1,30}")
+
+
+def _type_name(item):
+    """The buy-box listing's availability type when it is a short plain name, else OTHER."""
+    name = ((_listing(item) or {}).get("availability") or {}).get("type")
+    return name if isinstance(name, str) and _TYPE_NAME.fullmatch(name) else "OTHER"
+
+
+def enrich(offers, api):
+    """(corrected offers, note). Each distinct ASIN is asked once, ten at a time. Offers without an ASIN, and ASINs
+    the API did not return, keep the scraped values. If the API stops, what was corrected stays and the rest is as
+    scraped. The note holds only counts."""
+    asins = list(dict.fromkeys(a for a in map(asin_of, (o.get("url") for o in offers)) if a))
+    total = sum(1 for o in offers if asin_of(o.get("url")))
+    items, asked = {}, set()
+    try:
+        for i in range(0, len(asins), MAX_ASINS):
+            batch = asins[i:i + MAX_ASINS]
+            items.update(api.get_items(batch))
+            asked.update(batch)
+    except ApiStop:
+        pass
+    out, counts, others, checked, not_returned, in_asked = [], collections.Counter(), collections.Counter(), 0, 0, 0
+    for o in offers:
+        a = asin_of(o.get("url"))
+        if a in asked:
+            in_asked += 1
+        if a not in items:
+            out.append(o)
+            not_returned += a in asked
+            continue
+        kind, price = classify(items[a])
+        out.append(apply(o, kind, price))
+        checked += 1
+        counts[kind] += 1
+        if kind == "other":
+            others[_type_name(items[a])] += 1
+    if in_asked < total:
+        return out, f"api: stopped after {in_asked} of {total}"
+    parts = [f"{checked} of {total} checked"]
+    for n, label in ((counts["out_of_stock"] + counts["missing"], "out of stock"), (counts["preorder"], "preorder")):
+        if n:
+            parts.append(f"{n} {label}")
+    if others:
+        parts.append(f"{sum(others.values())} other (" + ", ".join(f"{k}:{v}" for k, v in sorted(others.items())) + ")")
+    if not_returned:
+        parts.append(f"{not_returned} not returned")
+    return out, "api: " + ", ".join(parts)
+
+
+def enrich_from_env(offers, env=os.environ, **kw):
+    """enrich with credentials from the environment. No credentials: nothing happens. Any other trouble: the offers
+    stay as scraped and the note names only the exception class."""
+    try:
+        creds = credentials(env)
+        if creds is None:
+            return offers, ""
+        return enrich(offers, AmazonApi(creds, **kw))
+    except Exception as e:
+        return offers, f"api: unavailable ({type(e).__name__})"

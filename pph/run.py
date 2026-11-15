@@ -147,6 +147,16 @@ def scrape(store, dry_run=False, max_pages=None, time_budget=None, db=None, now=
             # The store did not answer at all (timeouts, dropped connections). Like a refusal: nothing is written,
             # old prices stay, and the store is tried again from another machine instead of failing the run.
             blocked, note = True, "store did not answer: " + note
+    if store == "amazon" and offers:
+        # Amazon's own API is the source for price and stock; the scrape only discovers products. A problem with the
+        # API never fails the run: the scraped values stay.
+        try:
+            from . import amazon_api
+            offers, api_note = amazon_api.enrich_from_env(offers)
+        except Exception as e:
+            api_note = f"api: unavailable ({type(e).__name__})"
+        if api_note:
+            note = f"{note}; {api_note}" if note else api_note
     seconds = int(clock() - t0)
     if dry_run:
         run = {"store": store, "started": started, "status": "dry-run", "fetched": len({o["url"] for o in offers}),
