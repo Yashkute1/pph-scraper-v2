@@ -1,16 +1,16 @@
 # Scraper status
 
-Last run: 2026-11-15 05:24 UTC. 10 of 10 stores ok.
+Last run: 2026-11-15 07:26 UTC. 10 of 10 stores ok.
 
 | store | status | fetched | written | previous | seconds | note |
 |---|---|---|---|---|---|---|
-| elitehubs | dry-run | 13261 | 0 | 0 | 117 |  |
-| vishalperipherals | dry-run | 8501 | 0 | 0 | 79 |  |
-| pcstudio | dry-run | 2386 | 0 | 0 | 115 |  |
-| primeabgb | dry-run | 471 | 0 | 0 | 54 |  |
-| vedantcomputers | dry-run | 186 | 0 | 0 | 61 |  |
-| theitdepot | dry-run | 192 | 0 | 0 | 49 |  |
-| mdcomputers | dry-run | 503 | 0 | 0 | 43 |  |
-| computech | dry-run | 597 | 0 | 0 | 59 |  |
-| flipkart | dry-run | 1894 | 0 | 0 | 167 |  |
-| amazon | dry-run | 936 | 0 | 0 | 612 | api: 910 of 936 checked, 3 preorder, 113 other (AVAILABLE_DATE:23, IN_STOCK_SCARCE:90), 26 not returned |
+| elitehubs | saved | 13261 | 0 | 0 | 111 |  |
+| vishalperipherals | saved | 8501 | 0 | 0 | 81 |  |
+| pcstudio | saved | 2386 | 0 | 0 | 105 |  |
+| primeabgb | saved | 3577 | 0 | 0 | 382 |  |
+| vedantcomputers | saved | 485 | 0 | 0 | 198 |  |
+| theitdepot | saved | 2257 | 0 | 0 | 659 |  |
+| mdcomputers | saved | 2014 | 0 | 0 | 233 |  |
+| computech | saved | 5477 | 0 | 0 | 648 |  |
+| flipkart | saved | 6256 | 0 | 0 | 714 |  |
+| amazon | saved | 4577 | 0 | 0 | 2855 |  |
