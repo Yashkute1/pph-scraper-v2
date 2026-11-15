@@ -261,22 +261,22 @@ def test_amazon_scrape_uses_the_api_and_still_works_without_it(env, monkeypatch)
     import pph.amazon_api as A
     monkeypatch.setitem(R.STORES, "amazon", dict(CFG))
     seen = []
-    def fake(offers):
-        seen.append(len(offers))
+    def fake(offers, deadline=None):
+        seen.append((len(offers), deadline))
         return [dict(o, price=1234) for o in offers], "api: 2 of 2 checked"
     monkeypatch.setattr(A, "enrich_from_env", fake)
     items = [amazon_offer("B000000001"), amazon_offer("B000000002")]
     R.ADAPTERS["fake"] = adapter(items)
     try:
         db = mongomock.MongoClient().pph_site
-        code, run = R.scrape("amazon", db=db, now=NOW, fetcher=object())
+        code, run = R.scrape("amazon", db=db, now=NOW, fetcher=object(), clock=lambda: 1000.0)
     finally:
         R.ADAPTERS.pop("fake")
-    assert (code, run["status"], seen) == (0, "ok", [2])
+    assert (code, run["status"], seen) == (0, "ok", [(2, 1000.0 + R.API_SECONDS)])
     assert {d["price"] for d in db.offers.find()} == {1234}
     assert "api: 2 of 2 checked" in run["note"]
 
-    def boom(offers): raise RuntimeError("secret-text")
+    def boom(offers, deadline=None): raise RuntimeError("secret-text")
     monkeypatch.setattr(A, "enrich_from_env", boom)
     R.ADAPTERS["fake"] = adapter(items)
     try:

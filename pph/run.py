@@ -19,6 +19,8 @@ from .normalize import normalize
 from .stores import STORES
 from . import store_db
 
+API_SECONDS = 720          # most the Amazon API check may take after the scrape; then the scraped values stand
+
 OUT = pathlib.Path("out")
 BLOCKED_EXIT = 3
 
@@ -152,7 +154,7 @@ def scrape(store, dry_run=False, max_pages=None, time_budget=None, db=None, now=
         # API never fails the run: the scraped values stay.
         try:
             from . import amazon_api
-            offers, api_note = amazon_api.enrich_from_env(offers)
+            offers, api_note = amazon_api.enrich_from_env(offers, deadline=clock() + API_SECONDS)
         except Exception as e:
             api_note = f"api: unavailable ({type(e).__name__})"
         if api_note:
