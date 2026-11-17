@@ -194,6 +194,144 @@ _LAPTOP_LINE = re.compile(r"^.{0,40}\b(proart p\d{2}|proart px\d{2}|zenbook|vivo
                           r"|probook|elitebook|omnibook|\bspectre\b|chromebook)")
 
 
+def _first(rx, s):
+    m = _c(rx, 0).search(s)
+    return m.start() if m else -1
+
+
+def _misfile_sweep(t):
+    """Listings the 17 November 2026 check of all 44,887 live titles found in the wrong place. These are head-noun rules:
+    what a title is about decides, not a spec word further along ("cabinet with SMPS", "gaming headset with microphone",
+    "speaker with SD card slot"). Checked before the general rules; tests/test_misfiled_categories.py holds real titles."""
+    head = t[:90]
+    laptopish = _s(r"laptop|notebook|chromebook|macbook|thin and light|ultrabook", t)
+    has_rating = _s(r"\b\d{3,5} ?va\b|\bkva\b", t)
+    # things that go with a UPS, a speaker, a motherboard or a cabinet are accessories, not the thing itself
+    if _s(r"\bups\b", t) and _s(r"wall mount|under desk|\bmount\b|bracket|splitter|iec ?320|\bc1[34]\b|power cord|extension", t) and not has_rating:
+        return 'Accessories'
+    if ((_s(r"\b(laptop|notebook|internal) speakers?\b|speakers? (left|right)", head) and _s(r"compatible|\bfits?\b|replacement|\bfor (lenovo|asus|hp|dell|acer|msi|apple)\b", t))
+            or _s(r"\bshelf\b.{0,60}speakers?|speakers?.{0,40}\bshelf\b", head)) \
+            and not _s(r"\bpc speakers?\b|computer speakers?|desktop speakers?|usb powered|bluetooth|\brgb\b|\baux\b", head):
+        return 'Accessories'
+    if _s(r"^.{0,40}\b(front panel|cpu cover|computer cover|pc cover|dust ?cover)\b", t) or _s(r"^.{0,15}\d+ ?pcs\b.{0,40}\b(connector|socket|port|interface)\b|(internal|motherboard) speaker\b.{0,40}(header|9 pin|usb)", t):
+        return 'Accessories'
+    if _s(r"\b(psu|power supply|atx)\b.{0,40}\b(splitter|synchroni[sz]er|extension)\b|\b(splitter|synchroni[sz]er)\b.{0,30}(psu|power supply)", head):
+        return 'Accessories'
+    if _s(r"\b(iec ?(320)?|c14|c13)\b.{0,50}\b(adapter|converter|splitter|cable|cord|plug)\b|\beuro 2 pin\b|\bextension (power )?cable\b|\bvga ?2 ?hdmi\b|\btv-?out cable\b", head):
+        return 'Accessories'
+    # an assembled desktop sold with a Flipkart spec list: "(8 GB RAM/Intel HD Graphics/500 GB Hard Disk/.../Windows 10"
+    if _s(r"\(\s*\d+\s?gb\s?(ddr\d\s?)?ram\s?/", t) and _s(r"hard disk|ssd capacity|windows \d", t) and not laptopish \
+            and not _s(r"\b1[1-8](\.\d)?[- ]?(inch|\")", t):
+        return 'Desktop PC'
+    if _s(r"^.{0,25}\bimac\b", t) and not _s(r"compatible|paste|cover|stand|sleeve", head):
+        return 'Desktop PC'
+    # a laptop named by its screen: "[N6000/4GB/128GB SSD/WIN11 HOME/13.3 INCH/INTEGRATED GRAPHICS"
+    if _s(r"\b1[1-8](\.\d)?[- ]?(inch|\"|wuxga|wqxga)|\b1[1-8]\.\d\b", t) and _s(r"integrated graphics|windows|win ?1[01]|\bdos\b|\bssd\b|ryzen|\bcore\b|\bintel\b|\bamd\b|rtx ?\d|athlon|celeron", t) \
+            and not _s(r"\baio\b|all[- ]?in[- ]?one|monitor|desktop|tower|mini pc|\bnuc\b|\binch screen\b|free ?sync|g-sync|adaptive ?sync|\bvesa\b|tablet|projector|\btv\b|sleeve|\bbag\b|\bskin\b|cover|charger|adapter|battery|screen (guard|protector)|"
+                       r"\bstand\b|keyboard (cover|skin|protector|guard|for)|\bmouse\b|\bfan\b|cooler|\bdock", t):
+        return 'Gaming Laptop'
+    # a monitor with built-in speakers is a monitor
+    if _s(r"\b\d{2}(\.\d)?[- ]?(inch|\")|\b\d{2,3}(\.\d+)? ?cm\b", head) and _s(r"\b(va|ips|tn|oled|qled|led|mini[- ]?led) (backlit )?panel\b|\bmonitor\b", t) \
+            and not _s(r"laptop|notebook|tablet|projector|\bpc speakers?\b|computer speakers?|soundbar|sound bar|\bmount\b|\bstand\b|\barm\b|cable|stage monitor|floor monitor", t[:60]) \
+            and not _s(r"pc set|computer set|desktop (pc|computer)|gaming pc|\bcore ?i[3579]|\bi[3579][- ]\d{3,5}|\bryzen\b|\d+ ?gb ram|\bcpu\b|monitor (light|bar)|screen ?bar|light ?bar", t):
+        return 'Monitor'
+    # a wheel or a pad with a built-in speaker is still a gaming accessory
+    if _s(r"^.{0,60}\b(steering wheel|racing wheel|game ?pads?|game controller|joystick)\b", t) and not _s(r"headset|headphone|\bkeyboard\b", head):
+        return 'Gaming Accessories'
+    # a PC cabinet is a case whether or not it ships "with SMPS"
+    if _s(r"\b(cabinet|chassis|computer case|pc case|gaming case|mid[- ]tower|masterbox)\b", head) and _s(r"\b(smps|psu|power supply)\b", t) \
+            and not _s(r"^.{0,40}\b\d{3,4} ?w(att)?s?\b.{0,20}(smps|psu|power supply)|cabinet (fan|cooler)|\bfan\b|cpu cooler|air cooler|liquid cooler|cable|adapter|\bups\b", head):
+        return 'PC Case/Chassis'
+    if _s(r"\b(masterbox|mid[- ]tower|full[- ]tower|computer cabinet|computer case|pc case|gaming cabinet)\b", head) and _s(r"side panel|tempered glass|front panel|airflow|\batx\b|usb|pre-installed", t) \
+            and not _s(r"(cabinet|case) (fan|cooler)s?\b|\bcooling fan|\bfans?\b.{0,12}(only|pack)|cpu cooler|air cooler|liquid cooler|cable|adapter|\bups\b|motherboard (for|combo)", head):
+        return 'PC Case/Chassis'
+    # drive accessories are not drives: caddies, trays, readers, adapters and enclosures that only mention SSD or HDD
+    if _s(r"^.{0,70}\b(caddy|caddie|hdd tray|mounting tray|enclosure|docking|card reader|ssd reader|nvme reader|(hdd|ssd|sata|hard (drive|disk)) (adapter|converter)|"
+          r"(usb|type-?c).{0,12}(to|->).{0,12}(sata|ide|m\.?2)|2nd (hdd|ssd) (bay|caddy)|optical bay|2\.5.{0,6}to 3\.5.{0,6}(bay|adapter|bracket|tray)|mounting (kit|bracket))\b|"
+          r"^.{0,40}\b(m\.?2|ngff|ssd|nvme|sata)\b.{0,30}\bto\b.{0,40}\b(adapter|converter)\b", t) \
+            and _s(r"\bssd\b|\bhdd\b|hard (drive|disk)|m\.?2|nvme|sata", t) and not _s(r"portable (ssd|hard)|external (ssd|hard)|\bnas\b", head):
+        return 'Accessories'
+    # a UPS is a UPS even when it says it protects a NAS
+    if _s(r"^.{0,60}\b(ups|back-ups|uninterruptible)\b|\bonline ups\b|\b\d+ ?kva\b", head) and has_rating and not _s(r"splitter|\bcable\b|rack (shelf|mount)|\bmount\b", head):
+        return 'UPS'
+    # a conference or karaoke microphone is a microphone
+    t_plain = re.sub(r"\(?\s*not an? speakers?\s*\)?", " ", t)
+    mic_at, spk_at = _first(r"\b(microphones?|mic)\b", t_plain), _first(r"\bspeakers?\b|\bamplifier\b|\bsound ?bar\b", t_plain)
+    if _s(r"\b(conference|karaoke|podcast|lavalier|collar)\b.{0,14}\b(microphones?|mic)\b", head) and (spk_at < 0 or mic_at < spk_at) \
+            and not _s(r"(microphone|mic) (input|in|port|jack)\b|\bpa speaker\b|party speaker|singing machine", t_plain):
+        return 'Microphone'
+    # a speaker that takes an SD card or USB stick is a speaker; one that says speaker first is not a headset either
+    if _s(r"^(?:(?!headset|headphone|earphone|earbud|monitor|laptop|webcam|controller|steering|keyboard|mouse|pen ?drive|flash drive|memory card|card reader|\btv\b|wall shelf|mount|chair|massage|adapter|converter|dongle|sound card).){0,80}"
+          r"\b(speakers?|sound ?bar)\b", head) and not _s(r"(for|fit|compatible with|replacement|internal)\s.{0,30}\bspeakers?\b|\bspeakers? (for|compatible)\b.{0,30}(lenovo|asus|hp|dell|acer|msi)|\bmicrophone\b.{0,30}\bspeaker\b|\binch\b.{0,40}\bpanel\b|^\W*speakers?\b.{0,40}\b(lenovo|lenov|legion|y540|y7000|ideapad|pavilion|omen|nitro|predator|tuf|rog|vivobook|thinkpad|inspiron|latitude)\b", head):
+        return 'Speakers'
+    # a headset is a headset even when "microphone" is in the title
+    if _s(r"^(?:(?!microphone|\bmic\b).){0,70}\b(headsets?|headphones?|over[- ]ear)\b", head) \
+            and not _s(r"(headsets?|headphones?) (stand|hook|holder|cable|adapter|splitter|cover|pads?|case|hanger)|speaker|\bvr\b|virtual reality|psvr|\bfor consoles?\b|mouse ?pad|\bjack\b|adapter|\bdac\b|\bmount\b|\bbundle\b|sound card|cable management", head):
+        return 'Headset'
+    # earphones and earbuds are headsets, not microphones or accessories, whether or not they say "mic"
+    if _s(r"^.{0,60}\b(earphones?|earbuds?|ear ?buds|handsfree|neckband|in[- ]ear|on[- ]ear|buds)\b", head) \
+            and not _s(r"replacement|\bcable\b|adapter|splitter|cover|\btips?\b|\bcase (for|compatible)|cotton|swab|cleaning|wax|speaker|\bmic(rophone)? only\b|\bmouse\b|keyboard|screen guard|tempered|protector|\bguard\b|glass", head):
+        return 'Headset'
+    # a USB, wireless or desktop microphone is a microphone; its stand, arm or cable is not
+    mic_m = _first(r"\b(microphones?|mic|mics?set)\b|\bmicwith\b", head)
+    if mic_m >= 0 and _s(r"\b(usb|condenser|wireless|wired|lavalier|lapel|handheld|studio|gaming|desktop|clip|recording|speech)\b", head[:mic_m + 12]) \
+            and not _s(r"\bmic(rophone)?s? (stand|arm|boom|holder|clamp|tripod|pop|windscreen|shock|suspension|scissor)|scissor arm|boom arm|\bstand holder\b|sound ?card|audio adapter|usb adapter", head) \
+            and not _s(r"headset|headphone|earphone|speakers?\b|webcam|camera|\bcable\b|adapter only|\bmouse\b|keyboard|\bfor (iphone|android|phone)\b|replacement", head):
+        return 'Microphone'
+    # a Wi-Fi USB or PCIe adapter is networking gear
+    if _s(r"wi-?fi|wireless[- ]?n\d*|802\.11|\bac\d{3,4}\b|\bax\d{3,4}\b|\d+ ?mbps", head) and _s(r"\b(usb|pci(e| express)?|nano|mini)\b.{0,30}\b(adapter|dongle|card)\b|\b(adapter|dongle)\b", head) \
+            and not _s(r"headset|speaker|mouse|keyboard|camera|\bhdmi\b|display|projector|\btv\b|audio|\baux\b|\bcar\b|bluetooth (receiver|transmitter)|\bcable\b|\bstand\b", head):
+        return 'Networking'
+    # a keyboard is a keyboard, unless the listing is for a part of one (keycaps, wrist rest, cover, stand)
+    kb_at = _first(r"\bkeyboards?\b", t[:160])
+    kb_pre = t[:kb_at + 8] if kb_at >= 0 else ""
+    if kb_at >= 0 and kb_at <= 150 and _s(r"\b\d{2,3} keys\b|\b(mechanical|tkl|tenkeyless|hot[- ]?swap|tri[- ]?mode|wired|wireless|bluetooth|rgb|gaming|standard|membrane|numeric)\b", t[:160]) \
+            and not _s(r"keycaps?,|keycaps? (set|for|only)|\bset of \d+ keycaps|\bpbt keycaps|wrist rest|palm rest|\bcover\b|\bskin\b|protector|\bstand\b|\btray\b|clean|puller|lube|stabili[sz]er|sticker|holder|\bdesk\b|\bmat\b|\bpad\b|\bmouse\b|\bcable\b", kb_pre) \
+            and not _s(r"\bfor (macbook|laptop|ipad|tablet)\b|\bkeycaps? set\b|\bcore ?i[3579]|ryzen|\d+ ?gb ram|\bssd\b|\bcpu\b|desktop (pc|computer)|speakers?\b|arm ?rest|cushion|\bchair\b|elbow", t[:160]):
+        return 'Keyboard'
+    # a gaming, office or executive chair is a chair; its arm pads, cover, wheels or cushion are not
+    if _s(r"^.{0,60}\b(gaming|office|executive|ergonomic|racing|massage|revolving|swivel) chairs?\b", head) \
+            and not _s(r"arm ?rest|\bpads?\b|cushion|\bcover\b|\bmat\b|wheels?|casters?|bean ?bag|gas (lift|cylinder)|lumbar|pillow|\bbag\b|\bfoam\b.{0,20}\bfilled\b|\bfor (gaming|office) chairs?\b|\bstand\b", head):
+        return 'Gaming Chair'
+    # a graphics card is a graphics card even when its title says DDR3/DDR4
+    if (_s(r"graphics? card|graphic card|\bquadro\b|\bnvs ?\d{3}\b", head) or (_s(r"\bgt ?-?\d{3,4}\b", head) and _s(r"nvidia|gddr|pci ?express|geforce|\blp\b|low profile|\b\d+ ?gd\d", t))) \
+            and not _s(r"laptop|notebook|desktop|\bpc\b|\bfan\b|cooler|bracket|holder|stand|cable|riser|adapter|backplate|heat ?sink|(gpu|graphics card|vga) support|support (bracket|stand)|dimm|memory kit|\bkit\b", t) \
+            and not (_FK_GPU.search(t) or _FK_SSD.search(t)):
+        return 'Graphics Card'
+    # a motherboard named by chipset code and board size, with no memory size or speed in the title
+    if _s(r"\b[abhwxzq]\d{2,3}e?m?(-[a-z0-9]+)?\b|\btrx50\b|\bwrx90\b", head) and _s(r"\bddr[345]\b", head) \
+            and (len(t.split()) <= 9 or _s(r"\b(micro ?atx|e?-?atx|mini[- ]itx|matx)\b|\baorus\b|\bpro ws\b|\bga-[a-z0-9]+|\bprime\b|\btuf\b|\bwifi|\bmoth[a-z]{3,8}\b|taichi|phantom gaming|steel legend|tomahawk|mortar", t)) \
+            and not _s(r"\b\d+ ?gb\b|\bmhz\b|\bcl\d{2}\b|sodimm|dimm|\bram\b|memory|\bkit\b|\bcombo\b|processor|\bcpu\b", t):
+        return 'Motherboard'
+    # a fan is a fan whatever it is "for": the fan word comes before any case word
+    fan_m = _c(r"\bfans?\b", 0).search(head)
+    fan_at = fan_m.start() if fan_m else -1
+    if fan_at >= 0 and not _s(r"motherboard|processor|\bram\b|\bkit\b|\bcombo\b|\+|\bgb\b|\bssd\b|graphics?|\bcard\b|core ?i[3579]|ryzen|\bi[3579]-?\d{3,5}|xeon|\bpc set\b|monitor|\b(cabinet|chassis|computer case|pc case|mid[- ]tower)\b", head[:fan_at]) and not _s(r"fan not (included|supplied|provided)|without (cpu )?(fan|cooler)|\bno (cpu )?(fan|cooler)\b|w/o (fan|cooler)|cooler not", t) and (_first(r"\b(cabinet|chassis|computer case|pc case|mid[- ]tower)\b", t) < 0 or fan_at < _first(r"\b(cabinet|chassis|computer case|pc case|mid[- ]tower)\b", t)) \
+            and not _s(r"cooling pad|laptop stand|\bcase with\b|cabinet with|\b\d+ fans? (included|pre-?installed)|desk fan|table fan|ceiling|exhaust fan|kitchen|\bups\b|speaker|power supply|smps|graphics card|\brtx\b|\bps[45]\b|playstation|xbox|nintendo|\bswitch\b|console|steam ?deck|\bbbq\b|wood stove|\bblower\b|aquarium|hair", head) \
+            and (_first(r"\b(paste|grease|compound)\b", head) < 0 or fan_at < _first(r"\b(paste|grease|compound)\b", head)):
+        return 'Fans & Cooling'
+    # a water or liquid CPU cooler is cooling, not a processor
+    if _s(r"\b(water|liquid|aio) cooler\b|\bcooler\b.{0,30}\b(aio|liquid|water|radiator)\b|masterliquid|\bcpu (water|liquid) cooler\b", head) and not _s(r"laptop|desktop pc|all[- ]?in[- ]?one pc|motherboard|\bups\b", head):
+        return 'Fans & Cooling'
+    # a CPU air cooler is cooling, not a processor: the cooler noun comes before any processor model
+    if _s(r"^(?:(?!ryzen|core ?i[3579]|\bi[3579][- ]?\d{4,5}|xeon|athlon|pentium|celeron|threadripper|\bwith\b).){0,60}\b((cpu|processor)[- ](air )?cooler|air (tower )?cooler|tower cooler|heat ?sink fan)\b", t) \
+            and not _s(r"laptop|desktop pc|motherboard|\bups\b|thermal paste", head):
+        return 'Fans & Cooling'
+    # thermal pads, adhesive and compound are thermal paste, not fans
+    if _s(r"\bthermal (pads?|adhesive|compound|conductive|grease|paste)\b|\b(silicone|sillicon|silicon) pad\b|thermal conductivity pad", head) and not _s(r"\bfan\b|cooler|laptop cooling|cooling pad with|\bpreapplied\b|pre-applied", head):
+        return 'Thermal Paste'
+    # accessories for a console are not games
+    if _s(r"\b(xbox|ps[45]|playstation|nintendo|switch)\b.{0,60}\baccessor(y|ies)\b|\baccessor(y|ies)\b.{0,40}\b(xbox|ps[45]|playstation|nintendo|switch)\b|\bhandheld\b.{0,40}\b(game station|game console|console)\b|\bgame station\b", t[:140]) \
+            and not _s(r"\bgames?\b.{0,20}(disc|cd|edition)|\bdisc\b|ryzen|\bcore\b|\bintel\b|\bultra [579]\b|snapdragon|msi claw|rog ally|legion go|steam ?deck", t[:140]):
+        return 'Gaming Accessories'
+    # keyboard-and-mouse sets are filed with keyboards
+    if (_s(r"\bkeyboard\b.{0,40}\bmouse\b|\bmouse\b.{0,40}\bkeyboard\b|\b(keyboard|mouse)\b.{0,30}\bcombo\b|\bgaming combo\b", head)
+            or (_s(r"\bcombo\b", head) and _s(r"keyboard|keystrokes|\bkeys\b", t) and _s(r"\bmouse\b|\bdpi\b|optical", t))) \
+            and not _s(r"mouse ?pad|\bmat\b|\bstand\b|\bcover\b|wrist|laptop (sleeve|bag)|\bhub\b|\bdock\b|tray|chair|\bdesk\b|shelf|organi[sz]er|holder|converter|\bcable\b|\bconnector\b|adapter", head):
+        return 'Keyboard'
+    return None
+
+
 def _audit_fixes(t):
     """Listings the October 2026 live audit found in the wrong place; checked before the general rules."""
     # sixth sweep (27 October): things that only say they work with a laptop, desktop, motherboard or cabinet
@@ -389,6 +527,46 @@ def _audit_fixes(t):
     return None
 
 
+# What the general rules could not place lands in "Components". These narrow rules look at that leftover pile only,
+# so a listing the main rules already placed can never be moved by them. First match wins.
+_NOT_PC = r"laptop|notebook|phone|\btablet\b|projector|\btv\b|printer"
+_RESCUE = [
+    ('Memory/RAM', r"\b\d{1,3} ?gb\b", r"\(\d ?x ?\d{1,2} ?gb\)|\b(2133|2400|2666|3000|3200|3600|4000|4400|4800|5\d00|6\d00|7\d00|8\d00) ?mhz\b|\bd[345]\b|\bddr",
+     r"\bssd\b|nvme|graphics|\bgpu\b|" + _NOT_PC + r"|micro ?sd|\bsd card|pen ?drive|flash ?drive|motherboard|\bcard\b|\busb\b|sata"),
+    ('Fans & Cooling', r"\bliquid freezer\b|water cool|\bcooler\b|\bcoreliquid\b|\bkraken\b|\bfans?\b|^\W*arctic p\d{2}\b|\bag\d{3}\b|\bnf-[a-z]\d+",
+     None, r"laptop|cooling pad|phone|keyboard|mouse|chair|desk|ceiling|hair|bulb|paste|screen|\bhub\b|racing|simulator"),
+    ('Power Supply', r"\b\d{3,4} ?w\b|power suppl", r"\bpsu\b|power suppl|\bsfx\b|toughpower|\bsmps\b|crps|modular|bronze|\bgold\b|platinum", r"\bups\b|inverter|charger|adapter|" + _NOT_PC),
+    ('Pen Drive', r"flash ?drive|memory stick|dual drive|phone drive|datatraveler|\bpendrive\b", None, r"enclosure|reader|hub\b"),
+    ('HDD', r"\b\d+ ?(tb|gb)\b", r"\bultrastar\b|my passport|my book|surveillance|7200 ?rpm|\bsas\b", r"\bssd\b|nvme|" + _NOT_PC),
+    ('SSD', r"\b\d+ ?(tb|gb)\b", r"solid state|\bsu\d{3}\b|\blegend ?\d{3}|\bmp\d{3}\b|(wd|western digital) (green|blue|black|red) sata|aorus rgb|gen[345] pci", r"\bhdd\b|hard (disk|drive)|" + _NOT_PC),
+    ('Monitor', r"\b\d{2}(\.\d)?[- ]?(inch|\"|”)|\b\d{2}\"", r"\b(ips|oled|qhd|uhd|hdr|sxga|display|flat panel)\b|\bled\b", r"laptop|tablet|tempered|guard|protector|mount|stand|\bcase\b|\btv\b|xbox|\bps\d|portable screen|\bcable\b"),
+    ('Thermal Paste', r"thermal grizzly|noctua nt-h|\bthermal (paste|compound|pad)\b", None, None),
+    ('Webcam', r"webcam|usb camera|\bptz\b|conference camera|\bbrio\b|kiyo|\bc9\d{2}e?\b|video bar", None, None),
+    ('Mouse', r"\b(deathadder|viper|trackball|hyperion|triathlon|\bg402\b|mice|mouse)\b", None, r"\bpad\b|bungee|skates|booster|keyboard"),
+    ('Mousepad', r"\b(goliathus|battleground|mp\d{3})\b", None, None),
+    ('Keyboard', r"\bkeypad\b|\btkl\b|\b(cherry mx|outemu|gateron|kailh)\b|\bswitches\b|\bcombo set\b|\b(wireless|wired) combo\b|\bmk\d{3}\b|\bicon keys\b|deathstalker|\bkeyboard\b", None,
+     r"switch opener|nintendo|switch 2|\bps\d|xbox|cable|cover|skin|puller"),
+    ('Speakers', r"\b(amplifier|subwoofer|soundbar|sound ?bar|sound blaster|karaoke|srs-[a-z]{1,3}\d{2,3})\b", None, r"microphone|\bmic\b|headset|headphone|earphone"),
+    ('Headset', r"(\b(wired|wireless|bluetooth)( (wired|gaming|bluetooth))*|\bgaming)\s*\)?\s*$|\b(ear ?buds?|bassbuds|buds|truly wireless|in ear|dual pairing|ehs61|hs\d{2}\b)", None,
+     r"speaker|keyboard|mouse|adapter|dongle|receiver|cable|soundbar|controller|gamepad|camera|projector|\bfan\b|\bcase\b|charger|stand|\btv\b"),
+    ('Games', r"\((standard|deluxe|complete|ultimate|digital|physical|launch|day one)( edition)?\)|\(gold edition\)|\bdigital key\b|\(email delivery\)|\(not a cd\)|\| switch\s*$|for (playstation ?[45]|ps ?[45]|xbox( one| series)?|nintendo switch)\s*$",
+     None, r"controller|cover|\bcase\b|\bstand\b|headset|cable|charger|\bdock\b|grip|skin|strap|adapter|\bbag\b|console"),
+    ('Gaming Accessories', r"\b(game (console|station|stick)|gaming console|video game|retro|gs5 ?pro|inbuilt games|built-in (retro|classic|games)|capture (card|device|mini)|magnetic cover|giochi per console|xenoplay)\b",
+     None, r"mouse|keyboard|headset|speaker"),
+    ('Networking', r"wi-?fi|wireless[- ]n\b|802\.11|range extender|access point|ethernet|network adapter|\b(ac|ax|be)\d{3,4}\b|\d+ ?mbps", None, r"headset|speaker|mouse|keyboard|camera|watch|" + _NOT_PC),
+    ('PC Case/Chassis', r"\b(mini[- ]?itx|micro[- ]?atx|matx|mid[- ]?tower|mi-tower|full[- ]tower|vertical)\b.{0,40}\bcase\b|\bcase\b.{0,40}\b(mini[- ]?itx|matx|tower)\b|\bmini[- ]?itx tower\b|\btower case\b",
+     None, r"strip|sofa|chair|accessor|rotating|cooler|\bpsu\b"),
+    ('Accessories', r"\b(cable|extender|extension|adapter|dongle|converter|carrying case|hard shell)\b", None, None),
+]
+
+
+def _rescue_components(t):
+    for cat, need, need2, no in _RESCUE:
+        if _s(need, t) and (need2 is None or _s(need2, t)) and not (no and _s(no, t)):
+            return cat
+    return None
+
+
 def _rules_console(title, cat):
     t = ' ' + _WS.sub(' ', _DOTS.sub(' ', str(title).lower())) + ' '
     if cat == 'Other':
@@ -411,6 +589,8 @@ def _rules_console(title, cat):
     if cat == 'Components' and _s(r"\b(ps ?[345]|playstation ?[345]|xbox (series|one)|nintendo switch|switch 2)\b", t) and not _CONSOLE_ACC.search(t) \
             and not _s(r"hdmi|adapter|converter|capture|\bcard\b|monitor|\btv\b", t):
         return 'Games'
+    if cat == 'Components':
+        return _rescue_components(t) or cat
     return cat
 
 
@@ -418,7 +598,7 @@ def _type_of(title):
     t = ' ' + _WS.sub(' ', _DOTS.sub(' ', str(title).lower())) + ' '
     if _s(r"fidget|stress relief|(keyboard|switch|keycap|toy)\s?key ?chain|key ?chain\s?(toy|fidget)", t) and not _s(r"pen ?drive|flash drive|usb drive|memory stick", t):
         return 'Other'
-    fix = _audit_fixes(t)
+    fix = _misfile_sweep(t) or _audit_fixes(t)
     if fix:
         return fix
     fk = _FK_GPU.search(t) or _FK_SSD.search(t)
