@@ -532,6 +532,13 @@ def _audit_fixes(t):
 _NOT_PC = r"laptop|notebook|phone|\btablet\b|projector|\btv\b|printer"
 _RESCUE = [
     # brand and model families that the general rules never learned (checked only on titles left in Components)
+    ('Accessories', r"laptop (gaming )?cooler|cooling pad|\bcassing\b|(hdd|ssd) case\b|shock resistant case", None, None),
+    ('Gaming Accessories', r"\b(switch|ps ?[45]|xbox|ally)\b.{0,50}\b(case|charger|grip|cover|dock)\b|gaming accessory kit|\b(case|cover)\b.{0,30}\b(switch|nintendo)\b", None, r"\bgames?\b.{0,12}\bswitch\s*$"),
+    ('Games', r"\(switch\)|\bfor nintendo switch( 2)?\s*$|\bjeu console\b|nintendo sw switch|game switch ps5|^\W*1-2-switch|nintendo \d+ deluxe", None, None),
+    ('PC Case/Chassis', r"\b(atx|itx|tg|tempered glass|mid-cube|micro|tower|\bcore tg)\b.{0,50}\bcase\b|\b(pa\d{3}|nv\d)\b.{0,60}\bcase\b", None, r"nintendo|switch|protective|travel|watch|compatible|controller|laptop|phone|\bps[45]\b|xbox|accessor"),
+    ('Gaming Chair', r"\bcougar\b.{0,40}\bsofa\b", None, None),
+    ('Keyboard', r"^\W*(redragon|aula|evofox|ant esports|zebronics)\b.{0,60}\b(red|blue|brown|black|yellow) switch\b|\breaper switch\b", None, r"switch opener|nintendo"),
+    ('SSD', r"\bspatium\b", None, None),
     ('Networking', r"^\W*(qnap|d-?link|netgear|ubiquiti|mikrotik|cisco)\b", None, r"\bcable\b|\bssd\b|\bram\b"),
     ('Networking', r"\b(smart|managed|poe|gigabit|giga)\b.{0,40}\bswitch\b|\bpatch panel\b|\bsfp\+?\b", None, r"nintendo|\bps[45]\b|xbox|kvm|\bhdmi\b"),
     ('Headset', r"^\W*marshall (major|minor|monitor|motif|mode)\b|\b(blackshark|hammerhead|razer kraken|barracuda)\b", None, None),
