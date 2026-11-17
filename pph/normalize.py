@@ -531,6 +531,22 @@ def _audit_fixes(t):
 # so a listing the main rules already placed can never be moved by them. First match wins.
 _NOT_PC = r"laptop|notebook|phone|\btablet\b|projector|\btv\b|printer"
 _RESCUE = [
+    # brand and model families that the general rules never learned (checked only on titles left in Components)
+    ('Networking', r"^\W*(qnap|d-?link|netgear|ubiquiti|mikrotik|cisco)\b", None, r"\bcable\b|\bssd\b|\bram\b"),
+    ('Networking', r"\b(smart|managed|poe|gigabit|giga)\b.{0,40}\bswitch\b|\bpatch panel\b|\bsfp\+?\b", None, r"nintendo|\bps[45]\b|xbox|kvm|\bhdmi\b"),
+    ('Headset', r"^\W*marshall (major|minor|monitor|motif|mode)\b|\b(blackshark|hammerhead|razer kraken|barracuda)\b", None, None),
+    ('Speakers', r"^\W*marshall (acton|emberton|kilburn|woburn|willen|stanmore|stockwell|tufton|uxbridge|heston)\b|\bspkrs?\b|\bnommo\b", None, None),
+    ('Mouse', r"\b(mamba|basilisk|naga|cobra|zowie (ec|fk|za|s|u)\d)\b", None, r"\bpad\b|bungee|booster"),
+    ('Mousepad', r"\b(gigantus|zowie (ptf|g-sr|p-sr))\b", None, None),
+    ('Keyboard', r"\b(blackwidow|huntsman|ornata|cynosa|deathstalker)\b", None, None),
+    ('Gaming Accessories', r"\b(wolverine|kishi|raiju)\b|\bgame ?box\b|\bx7m\b|\br36s\b|sonicbase|kj-game|micromini|\b\d+ ?gb with\b|game capture|live gamer|\bcam link\b", None, None),
+    ('PC Case/Chassis', r"\bfd-c[a-z]?-|rackmount case|\bcase only\b|\b(black|white|grey|gray|silver|red) case\b", None, r"accessor|side panel|\bkit\b|\bfans?\b|\bpsu\b|power supply"),
+    ('Desktop PC', r"\bnuc\b|\bmini pc\b|tower desktop|consumer tower", None, None),
+    ('Gaming Laptop', r"\(\w[\w-]*/\d{1,2}/\d{3,4} ?gb/w1[01]\b", None, None),
+    ('Gaming Chair', r"\bgaming sofa\b|^\W*cougar \w+ \w* ?sofa\b|\bsofa\b.{0,12}cgr-", None, None),
+    ('UPS', r"^\W*eaton\b|\bups\b", None, r"\bcable\b|mount|bracket"),
+    ('Graphics Card', r"\bnvidia t\d{3,4}\b|\brtx a\d{3,4}\b", None, None),
+    ('SSD', r"\bkc\d{3}\b", r"\b\d+ ?(gb|tb)\b", None),
     ('Memory/RAM', r"\b\d{1,3} ?gb\b", r"\(\d ?x ?\d{1,2} ?gb\)|\b(2133|2400|2666|3000|3200|3600|4000|4400|4800|5\d00|6\d00|7\d00|8\d00) ?mhz\b|\bd[345]\b|\bddr",
      r"\bssd\b|nvme|graphics|\bgpu\b|" + _NOT_PC + r"|micro ?sd|\bsd card|pen ?drive|flash ?drive|motherboard|\bcard\b|\busb\b|sata"),
     ('Fans & Cooling', r"\bliquid freezer\b|water cool|\bcooler\b|\bcoreliquid\b|\bkraken\b|\bfans?\b|^\W*arctic p\d{2}\b|\bag\d{3}\b|\bnf-[a-z]\d+",
@@ -556,7 +572,7 @@ _RESCUE = [
     ('Networking', r"wi-?fi|wireless[- ]n\b|802\.11|range extender|access point|ethernet|network adapter|\b(ac|ax|be)\d{3,4}\b|\d+ ?mbps", None, r"headset|speaker|mouse|keyboard|camera|watch|" + _NOT_PC),
     ('PC Case/Chassis', r"\b(mini[- ]?itx|micro[- ]?atx|matx|mid[- ]?tower|mi-tower|full[- ]tower|vertical)\b.{0,40}\bcase\b|\bcase\b.{0,40}\b(mini[- ]?itx|matx|tower)\b|\bmini[- ]?itx tower\b|\btower case\b",
      None, r"strip|sofa|chair|accessor|rotating|cooler|\bpsu\b"),
-    ('Accessories', r"\b(cable|extender|extension|adapter|dongle|converter|carrying case|hard shell)\b", None, None),
+    ('Accessories', r"\b(cable|extender|extension|adapter|adaptor|dongle|converter|carrying case|hard shell)\b", None, None),
 ]
 
 
