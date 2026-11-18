@@ -268,6 +268,12 @@ def _misfile_sweep(t):
     # a PSP case or pouch is a gaming accessory
     if _s(r"\bpsp\b.{0,60}\b(case|bag|pouch|cover|charger|cable)\b|\b(case|bag|pouch|cover)\b.{0,50}\bpsp\b", head):
         return 'Gaming Accessories'
+    # a loose UPS battery (sealed lead-acid, SMF, VRLA, LiFePO4, 18650) or its connector is an accessory; a UPS that lists a battery, a VA rating or a mini-UPS spec is not
+    if _s(r"\bbattery\b", t[:130]) and _s(r"\b\d+(\.\d)? ?ah\b|\bsmf\b|\bvrla\b|lifepo4|18650", t[:130]) \
+            and not _s(r"\d ?k?va\b|mini ups|\brouter\b|\binverter\b|\bonline ups\b|static converter|\bmah\b|\bcctv ups\b|power station", head[:70]):
+        return 'Accessories'
+    if _s(r"\bconnector for ups\b|^\W*battery (compatible|for) ", head):
+        return 'Accessories'
     # things that go with a UPS, a speaker, a motherboard or a cabinet are accessories, not the thing itself
     if _s(r"\bups\b", t) and _s(r"wall mount|under desk|mount (for|bracket|kit)|bracket|splitter|rj ?50|usb to rj|control cable|iec ?320|\bc1[34]\b.{0,30}(cord|cable|adapter|splitter|converter)|power cord|extension", t) \
             and not has_rating and not _s(r"online|line[- ]interactive|double[- ]conversion|inverter|back-?ups|battery backup|tower model|rack-?mount model|\bw(att)?s?\b", t):
