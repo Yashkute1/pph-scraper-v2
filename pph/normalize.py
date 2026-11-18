@@ -542,6 +542,12 @@ def _audit_fixes(t):
 # so a listing the main rules already placed can never be moved by them. First match wins.
 _NOT_PC = r"laptop|notebook|phone|\btablet\b|projector|\btv\b|printer"
 _RESCUE = [
+    # not PC products at all (car care, food, clothing, kitchen, adhesives, books, phone screen guards, order-entry rows); "Other" is dropped
+    ('Other', r"car (scratch|paint|wash)|sticker (&|and) decal|vanilla|\bextract\b.{0,30}\bml\b|thermo gel|pain relief|solder(ing)? (paste|flux)|\brosin\b|\bbuzzer\b|rechargeable battery|emergency bulb|anti-?seize|lubricant|"
+              r"power station|refrigerator|\bfridge\b|(food|vegetable|electric) chopper|loctite|\bacrylic\b.{0,20}adhesive|exam preparation|night ?dress|nighty|coin cell|waterproof glue|sealant|"
+              r"photography (light )?reflector|\bgimbal\b|selfie (stick|gimbal)|led coasters?|guitar practice|iron-?on|\bnfc ?card\b|metal card|watch (travel )?(case|roll)|^\W*custom pc( product)?\b|"
+              r"mobile repairing|chip level|prompt engineering|maintenance technician book|video course|boron nitride|mobile cleaning solution|automotive|"
+              r"(screen guard|screen protector|tempered glass).{0,60}(redmi|realme|narzo|huawei|matepad|\bpad\b|phone|mobile|iphone|galaxy)", None, None),
     ('PC Case/Chassis', r"dual-chamber case|\bfans? case\b", None, None),
     # brand and model families that the general rules never learned (checked only on titles left in Components)
     ('Accessories', r"(laptop|notebook) (gaming )?cooler|cooling pad|\bcassing\b|(hdd|ssd) case\b|shock resistant case", None, None),
