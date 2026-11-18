@@ -16,7 +16,7 @@ def test_classify_kinds():
     assert classify(item("IN_STOCK", 1499.0)) == ("in_stock", 1499.0)
     assert classify(item("OUT_OF_STOCK"))[0] == "out_of_stock"
     assert classify(item("PREORDER"))[0] == "preorder"
-    assert classify(item("AVAILABLE_DATE"))[0] == "other"
+    assert classify(item("AVAILABLE_DATE"))[0] == "in_stock"      # buyable now with a stated delivery date (checked on amazon.in, 10 of 10)
 
 
 def test_scarce_listing_is_in_stock():
@@ -280,7 +280,7 @@ def test_enrich_corrects_and_counts():
     assert (out[3]["price"], out[3]["in_stock"]) == (900, True)
     assert out[4] == offers[4]
     assert offers[0]["price"] == 1000               # inputs untouched
-    assert note == "api: 3 of 4 checked, 1 out of stock, 1 other (AVAILABLE_DATE:1), 1 not returned"
+    assert note == "api: 3 of 4 checked, 1 out of stock, 1 not returned"
 
 
 def test_scarce_is_in_stock_and_not_counted_as_other():
@@ -289,8 +289,7 @@ def test_scarce_is_in_stock_and_not_counted_as_other():
                    "B000000003": api_item("B000000003", "IN_STOCK", 700.0)})
     out, note = enrich([offer("B000000001", in_stock=False), offer("B000000002"), offer("B000000003")], api)
     assert (out[0]["price"], out[0]["in_stock"]) == (1499, True)
-    assert "1 other (AVAILABLE_DATE:1)" in note
-    assert "IN_STOCK_SCARCE" not in note
+    assert "other" not in note and "IN_STOCK_SCARCE" not in note and "AVAILABLE_DATE" not in note
 
 
 def test_preorder_and_odd_type_names():
@@ -477,3 +476,9 @@ def test_probe_summary_lists_each_item_with_its_availability():
         {"asin": "B000000002"}]}})
     assert summarize(body) == ["B000000001 AVAILABLE_DATE price=1499.0 msg=Available: 5 Dec", "B000000002 no-offer"]
     assert summarize("not json") == []
+
+
+def test_available_date_makes_an_offer_the_scraper_called_out_of_stock_buyable():
+    """Amazon's AVAILABLE_DATE listings have Add to Cart and a delivery date; the scraper had marked 12 of 17 sampled ones out of stock."""
+    out, _ = enrich([offer("B000000001", price=5000, in_stock=False)], FakeApi({"B000000001": api_item("B000000001", "AVAILABLE_DATE", 6633.0)}))
+    assert (out[0]["price"], out[0]["in_stock"]) == (6633, True)

@@ -25,7 +25,7 @@ def _listing(item):
 
 
 def classify(item):
-    """(kind, price) for one API item. Kind is in_stock (IN_STOCK or IN_STOCK_SCARCE), out_of_stock, preorder, other,
+    """(kind, price) for one API item. Kind is in_stock (IN_STOCK, IN_STOCK_SCARCE or AVAILABLE_DATE), out_of_stock, preorder, other,
     or missing (no offer known).
     The price is the buy-box listing's (else the first listing's), None when absent, not a finite number above 0, or
     not in rupees."""
@@ -37,7 +37,8 @@ def classify(item):
     usable = (isinstance(amount, (int, float)) and not isinstance(amount, bool) and math.isfinite(amount)
               and amount > 0 and currency in (None, "INR"))
     price = round(amount) if usable else None
-    kind = {"IN_STOCK": "in_stock", "IN_STOCK_SCARCE": "in_stock", "OUT_OF_STOCK": "out_of_stock",
+    # AVAILABLE_DATE: Amazon sells it now with a stated delivery date (Add to Cart and Buy Now both work on amazon.in)
+    kind = {"IN_STOCK": "in_stock", "IN_STOCK_SCARCE": "in_stock", "AVAILABLE_DATE": "in_stock", "OUT_OF_STOCK": "out_of_stock",
             "PREORDER": "preorder"}.get((listing.get("availability") or {}).get("type"), "other")
     return kind, price
 
