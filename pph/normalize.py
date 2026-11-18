@@ -231,6 +231,16 @@ def _misfile_sweep(t):
         return 'SSD'
     if _s(r"\b\d+ ?gb ?/ ?(5400|7200) ?rpm\b|\b\d+ ?(gb|tb)\b.{0,12}\b(5400|7200) ?rpm\b", head) and not _s(r"\bssd\b|\bram\b|ryzen|core ?i\d|\bcpu\b|enclosure|adapter|caddy", t):
         return 'HDD'
+    # an external or portable SSD named by capacity is a drive, even when "casing" is in the title
+    if _s(r"\b\d+ ?(gb|tb)\b.{0,15}\b(external|portable) (solid state drive|ssd)\b", head) and not _s(r"enclosure|enclousre|case for|adapter|caddy|\bcable\b|\bbag\b|pouch|cover", head):
+        return 'SSD'
+    # an enclosure or an M.2 carrier is an accessory, whatever drive it names ("SSD_&_HDD_ENCLOSURE" has no word break)
+    if _s(r"enclosure|enclousre|\b(m\.?2|nvme)\b.{0,25}\b(pcie?|pci-e)\b.{0,10}\badapter\b", head) and not _s(r"\bnas\b|\bfans?\b|cooling|cooler|panel mount|exhaust", head):
+        return 'Accessories'
+    # a gaming headset whose title lost the word "headset": it ends in Wired, Wireless, Bluetooth or Gaming and talks about mic, drivers or battery
+    if _s(r"\b(wired|wireless|bluetooth|gaming)\s*\)?\s*$", t) and _s(r"\bmic\b|surround|latency|\benc\b|\banc\b|drivers?\b|noise", t) \
+            and not _s(r"microphone|condenser|charger|converter|adaptor|smps|power supply|\bups\b|\bvolt|studio|\bxlr\b|lavalier|podcast|\bstand\b|\bmouse\b|keyboard|game ?controller|gamepad|joystick|speakers?\b|\bcable\b|adapter|webcam|camera|soundbar", t):
+        return 'Headset'
     # a PSP case or pouch is a gaming accessory
     if _s(r"\bpsp\b.{0,60}\b(case|bag|pouch|cover|charger|cable)\b|\b(case|bag|pouch|cover)\b.{0,50}\bpsp\b", head):
         return 'Gaming Accessories'
@@ -296,7 +306,7 @@ def _misfile_sweep(t):
           r"\b(speakers?|sound ?bar)\b", head) and not _s(r"(for|fit|compatible with|replacement|internal)\s.{0,30}\bspeakers?\b|\bspeakers? (for|compatible)\b.{0,30}(lenovo|asus|hp|dell|acer|msi)|\bmicrophone\b.{0,30}\bspeaker\b|\binch\b.{0,40}\bpanel\b|^\W*speakers?\b.{0,40}\b(lenovo|lenov|legion|y540|y7000|ideapad|pavilion|omen|nitro|predator|tuf|rog|vivobook|thinkpad|inspiron|latitude)\b", head):
         return 'Speakers'
     # a headset is a headset even when "microphone" is in the title
-    if _s(r"^(?:(?!microphone|\bmic\b).){0,70}\b(headsets?|headphones?|over[- ]ear)\b", head) \
+    if _s(r"^(?:(?!microphone|\bmic\b).){0,70}\b(headsets?|headphones?|over[- ]ear|over the ear)\b", head) \
             and not _s(r"(headsets?|headphones?) (stand|hook|holder|cable|adapter|splitter|cover|pads?|case|hanger)|speaker|\bvr\b|virtual reality|mixed reality|meta quest|\bquest \d|oculus|psvr|\bfor consoles?\b|mouse ?pad|\bjack\b|adapter|\bdac\b|\bmount\b|\bbundle\b|sound card|cable management", head):
         return 'Headset'
     # earphones and earbuds are headsets, not microphones or accessories, whether or not they say "mic"
@@ -304,7 +314,7 @@ def _misfile_sweep(t):
             and not _s(r"replacement|\bcable\b|adapter|splitter|cover|\btips?\b|\bcase (for|compatible)|cotton|swab|cleaning|wax|speaker|\bmic(rophone)? only\b|\bmouse\b|keyboard|screen guard|tempered|protector|\bguard\b|glass", head):
         return 'Headset'
     # a USB, wireless or desktop microphone is a microphone; its stand, arm or cable is not
-    mic_m = _first(r"\b(microphones?|mic|mics?set)\b|\bmicwith\b", head)
+    mic_m = _first(r"\b(microphones?|mic|mics?set)\b|\bmic(with|kit|rgb|set)\b", head)
     if mic_m >= 0 and _s(r"\b(usb|condenser|wireless|wired|lavalier|lapel|handheld|studio|gaming|desktop|clip|recording|speech)\b", head[:mic_m + 12]) \
             and not _s(r"\bmic(rophone)?s? (stand|arm|boom|holder|clamp|tripod|pop|windscreen|shock|suspension|scissor)|scissor arm|boom arm|\bstand holder\b|sound ?card|audio adapter|usb adapter", head) \
             and not _s(r"headset|headphone|earphone|speakers?\b|webcam|camera|\bcable\b|adapter only|\bmouse\b|keyboard|\bfor (iphone|android|phone)\b|replacement|without (a )?mic|\btws\b|party|sound system", head):
@@ -572,7 +582,7 @@ _RESCUE = [
               r"(screen guard|screen protector|tempered glass).{0,60}(redmi|realme|narzo|huawei|matepad|\bpad\b|phone|mobile|iphone|galaxy)", None, None),
     ('PC Case/Chassis', r"dual-chamber case|\bfans? case\b", None, None),
     # brand and model families that the general rules never learned (checked only on titles left in Components)
-    ('Accessories', r"(laptop|notebook) (gaming )?cooler|cooling pad|\bcassing\b|(hdd|ssd) case\b|shock resistant case", None, None),
+    ('Accessories', r"\bhdmi\b.{0,25}\b(mtr|meters?)\b|(laptop|notebook) (gaming )?cooler|cooling pad|\bcassing\b|(hdd|ssd) case\b|shock resistant case", None, None),
     ('Gaming Accessories', r"\b(switch|ps ?[45]|xbox|ally)\b.{0,50}\b(case|charger|grip|cover|dock)\b|gaming accessory kit|\b(case|cover)\b.{0,30}\b(switch|nintendo)\b", None, r"\bgames?\b.{0,12}\bswitch\s*$"),
     ('Games', r"\(switch\)|\bfor nintendo switch( 2)?\s*$|\bjeu console\b|nintendo sw switch|game switch ps5|^\W*1-2-switch|nintendo \d+ deluxe", None, None),
     ('PC Case/Chassis', r"\b(atx|itx|tg|tempered glass|mid-cube|micro|tower|\bcore tg)\b.{0,50}\bcase\b|\b(pa\d{3}|nv\d)\b.{0,60}\bcase\b|\b(mini[- ]?itx|micro[- ]?atx|matx|mid[- ]?tower|mi-tower|full[- ]tower|vertical)\b.{0,40}\bcase\b|\bcase\b.{0,40}\b(mini[- ]?itx|matx|tower)\b|\bmini[- ]?itx tower\b|\btower case\b",

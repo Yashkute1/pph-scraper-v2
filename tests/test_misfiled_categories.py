@@ -6,6 +6,30 @@ from pph.group import slug
 from pph.normalize import type_of
 
 MISFILED = [
+    # --- over-reach caught by the frozen-category safety net on the second audit round ---
+    ('QNAP TS-433-4G 4-Bay NAS Enclosure', 'networking'),
+    ('Synology DiskStation DS225+ NAS Enclosure', 'networking'),
+    ('SYNOLOGY DS923+ 4-BAY DISKSTATION NAS ENCLOSURE', 'networking'),
+    ('Fourdot 80mm 3inch 5V DC USB Cooling Fan 2000RPM for Cabinets Enclosures', 'fans-cooling'),
+    ('Fourdot Coolings Panel Mount Exhaust cooling Fan 6 Inches with dust filter for Enclosures and cabinets', 'fans-cooling'),
+    ('BALRAMA 12v DC to AC Converter with UPS Battery Charger 12 Volt DC to AC Solar Converter Combo Set Designed for Gaming', 'accessories'),
+    ('GoodsBazaar Work from Home Kit 12 Volt DC to AC Converter & UPS Battery Charger SMPS Adaptor Combo Set Designed for Gaming', 'accessories'),
+    ('USB Computer Microphone with Base, Adjustable Condenser Chat Mic for Gaming', 'microphone'),
+    ('USB Desktop Microphone with Flexible Gooseneck, Noise Reduction, Mute Button, Plug & Play Condenser Mic for PC, Laptop, Video Calls, Online Classes, Recording & Gaming', 'microphone'),
+    # --- from the second independent audit round ---
+    ('Wifton USB Condenser MicRGB LED Set with Stand for YouTube Gaming Podcast Voice Chat Microphone', 'microphone'),
+    ('ADCOM Vision 7.1 Surround, Red RGB LED, Mic, 50mm Bass Drivers & Volume Controller USB Wired Gaming', 'headset'),
+    ('EVOFOX Hyperion 3.5mm + Type-C Immersive Surround Sound with Retractable Mic Wired Gaming', 'headset'),
+    ('GOBOULT W40 with 4 Mic ENC, 48H Battery Life, Low Latency Gaming, 5.3v Bluetooth', 'headset'),
+    ('HONEYWELL HDMI 15 MTR WITH ETHERNET', 'accessories'),
+    ('NEXVO USB3.0_SSD_&_HDD_ENCLOSURE 3.5 inch USB3.0', 'accessories'),
+    ('NEXVO HIGH SPEED SSD_&_HDD_ENCLOSURE 3.5 inch TYPE-USB3.0', 'accessories'),
+    ('ZEBRONICS ZEB CSH01 2.5 inch Shock Resistant Water Proof EXTERNAL SSD ENCLOUSRE', 'accessories'),
+    ('ULTRABYTES Dual M.2 PCIE Adapter for SATA or PCIE NVMe SSD with Advanced Heat Sink Solution,M.2 SSD NVME and SATA22110 2280 2260 2242 2230to PCI-e 3.0 x 4 Host Controller Expansion Card', 'accessories'),
+    ('ASUS ROG Strix Arion M.2 NVME Gen2 Enclosure-USB 3.2 Solid State Drive (SSD)', 'accessories'),
+    ('HIKVISION T300 1 TB External Solid State Drive (SSD) Window, Mac OS, Android, TypeC Enabled HS-ESSD-T300S(STD)/1T (Metal Casing)', 'ssd'),
+    ('HUYUN Mic Replacement Crystal Sound Noise Isolation USB Microphone Compatible for Logit G733 Lightspeed RGB Gaming Headset (Black)', 'microphone'),
+    ('IMAGINEA Boom Arm Microphone Stand | Adjustable Metal Suspension Mic Stand for Podcast Microphone Stand', 'accessories'),
     # --- over-reach caught by the frozen-category safety net while adding the rules above ---
     ('Edifier R33BT Bluetooth Bookshelf Speakers 2.0 10 Watts (Black)', 'speakers'),
     ('D9A Portable Wooden Desktop Speakers, USB Powered Stereo,for Laptop,Pc Sound Effect', 'speakers'),
@@ -147,7 +171,6 @@ MISFILED = [
     ('Samsung Galaxy Watch8 Classic (46mm Bluetooth)', 'components'),
     ('SteelSeries Stratus Duo Wireless', 'components'),
     ('ASUS ROG 100W USB-C Adapter AC100-00', 'accessories'),
-    ('HONEYWELL HDMI 15 MTR WITH ETHERNET', 'components'),
     ('Keychron Premium Coiled Aviator Cable, USB Type-C, 5-Pin GX16, 108cm, 480Mbps', 'accessories'),
     ('Keychron Premium Coiled Aviator Cable, USB Type-C, 5-Pin GX16, 108cm, Rainbow Plated Black', 'accessories'),
     ('Softline Pro SP RJ111 Foldable Podcast Microphone Stand 360° Adjustable Desktop Mic Arm Stand Microphone Stand', 'accessories'),
