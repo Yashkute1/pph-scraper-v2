@@ -27,6 +27,26 @@ def post(url, body, headers):
         return e.code, e.read().decode("utf-8", "replace")
 
 
+def summarize(text):
+    """One line per item: ASIN, availability type, price and Amazon's availability message (public product data only)."""
+    try:
+        items = json.loads(text)["itemsResult"].get("items") or []
+    except (ValueError, KeyError, AttributeError, TypeError):
+        return []
+    lines = []
+    for item in items:
+        listings = ((item.get("offersV2") or {}).get("listings") or [])
+        if not listings:
+            lines.append(f"{item.get('asin')} no-offer")
+            continue
+        l = next((x for x in listings if x.get("isBuyBoxWinner")), listings[0])
+        av = l.get("availability") or {}
+        price = ((l.get("price") or {}).get("money") or {}).get("amount")
+        msg = av.get("message")
+        lines.append(f"{item.get('asin')} {av.get('type')} price={price}" + (f" msg={msg}" if msg else ""))
+    return lines
+
+
 def main(asins):
     cid, secret = os.environ.get("AMAZON_CREATORS_CREDENTIAL_ID"), os.environ.get("AMAZON_CREATORS_CREDENTIAL_SECRET")
     version, tag = os.environ.get("AMAZON_CREATORS_CREDENTIAL_VERSION", "").strip(), os.environ.get("AMAZON_PARTNER_TAG", "").strip()
@@ -53,7 +73,9 @@ def main(asins):
             "resources": ["itemInfo.title", "offersV2.listings.price", "offersV2.listings.availability"]}
     status, text = post(GET_ITEMS, body, {"Authorization": f"Bearer {tok['access_token']}", "x-marketplace": MARKETPLACE})
     print(f"getItems: HTTP {status}")
-    print(text[:3000])
+    for line in summarize(text):
+        print(line)
+    print(text[:1500])
     return 0 if status == 200 else 1
 
 
