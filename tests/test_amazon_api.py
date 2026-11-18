@@ -467,3 +467,13 @@ def test_token_without_expires_in_is_reused():
     api.get_items(["B000000001"])
     api.get_items(["B000000002"])
     assert sum("/auth/o2/token" in c[0] for c in f.calls) == 1
+
+
+def test_probe_summary_lists_each_item_with_its_availability():
+    from tools.amazon_api_probe import summarize
+    body = json.dumps({"itemsResult": {"items": [
+        {"asin": "B000000001", "offersV2": {"listings": [{"isBuyBoxWinner": True, "price": {"money": {"amount": 1499.0}},
+                                                          "availability": {"type": "AVAILABLE_DATE", "message": "Available: 5 Dec"}}]}},
+        {"asin": "B000000002"}]}})
+    assert summarize(body) == ["B000000001 AVAILABLE_DATE price=1499.0 msg=Available: 5 Dec", "B000000002 no-offer"]
+    assert summarize("not json") == []
