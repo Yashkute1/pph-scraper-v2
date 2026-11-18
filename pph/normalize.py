@@ -634,6 +634,19 @@ _RESCUE = [
     ('Desktop PC', r"\b90xs\d{4}in\b", None, None),
     ('SSD', r"\bwd blue sa\d{3}|blue sa510|extreme portable e61", None, None),
     ('Memory/RAM', r"\b\d ?x ?\d{1,2} ?gb\b.{0,12}\b\d{4} ?mhz\b|\bcl\d{2}\b.{0,12}\b\d ?x ?\d{1,2} ?gb\b", None, r"\bssd\b|nvme|laptop"),
+    # the last model-only listings: junk first, then brand and model families
+    ('Other', r"^\W*j36 ultra|back rest with back support|tempered glass guard for|\btv remote\b|protective case for (na\b|designed)|pop up power outlet|ai wearable", None, None),
+    ('Games', r"\bdead space\b|dragon.s dogma|sniper elite|atari 50|\bborderlands\b|retromix|\bwwe 2k\b|\btiebreak\b|\bremake\b", None, r"\bconsole\b.{0,20}(bundle|edition)|\bskin\b|\bcase\b"),
+    ('SSD', r"\blegend (max )?\d{3}\b", None, None),
+    ('Networking', r"wireless usb dongg?le|\bwireless usb dongle\b", None, None),
+    ('Graphics Card', r"\bnvidia l\d{1,2}\b", None, None),
+    ('Keyboard', r"^\W*rapoo set\b", None, None),
+    ('Webcam', r"conferencecam|\bbcc950\b", None, None),
+    ('Headset', r"audio[- ]technica (ath-)?m\d+", None, None),
+    ('Monitor', r"\bqd ?-?oled\b|\bagon\b", r"\bhz\b", None),
+    ('Gaming Accessories', r"ps4 camera|playtrek|\bps5 (console )?(middle )?skin\b|bulwark dock|mobile gaming combo|\bstratus\b", None, None),
+    ('Accessories', r"\bcaddy\b|shock resistant|\b2\.5 inch (usb|c)\b|pro-reader|card reader|i/o kit|rail kit|cleaner and paste|pci ?express.{0,12}card|serial card|lpt card|polling rate booster|"
+              r"laptop (full body )?skin|skin sticker", None, None),
     ('PC Case/Chassis', r"dual-chamber case|\bfans? case\b", None, None),
     # brand and model families that the general rules never learned (checked only on titles left in Components)
     ('Accessories', r"\bhdmi\b.{0,25}\b(mtr|meters?)\b|(laptop|notebook) (gaming )?cooler|cooling pad|\bcassing\b|(hdd|ssd) case\b|shock resistant case", None, None),
