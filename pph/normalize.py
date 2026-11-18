@@ -212,12 +212,36 @@ def _misfile_sweep(t):
     head = t[:90]
     laptopish = _s(r"laptop|notebook|chromebook|macbook|thin and light|ultrabook|vivobook|zenbook|ideapad|thinkpad|thinkbook|inspiron|\bxps\b|\baspire\b|\bswift\b|handheld|\bally\b|\blegion\b|\bnitro\b|\bvictus\b", t)
     has_rating = _s(r"\d(\.\d+)? ?k?va\b|\bkva\b", t)
+    # a mini PC, Mac mini, NUC or assembled desktop is a desktop, whatever GPU or CPU it names
+    if _s(r"^.{0,60}\b(mac mini|mini pc|mini gaming computers?|tiny desktop|nuc ?\d{0,2}|assembled desktop|ops-i\d)\b", head) \
+            and not _s(r"cooler|\bcase\b|\bstand\b|mount|bracket|adapter|\bbag\b|cover|sleeve|\bdock\b|keyboard|ssd (for|upgrade)|ram for|memory for|\bcable\b|charger|protector|\bskin\b|compatible with|\bfor (mac|nuc|mini)|android|kitkat|tv box|\bbox\b|amlogic|allwinner|\bh616\b|streaming", head):
+        return 'Desktop PC'
+    # a titled memory module is RAM even when it says it fits a Dell XPS or a Legion desktop
+    if _s(r"\bddr[345]\b", t) and _s(r"\b(u|so-?)?dimm\b|\bram\b|memory module", t) and _s(r"\b\d+ ?gb\b", t) \
+            and not _s(r"\bssd\b|nvme|\bgddr|graphics|windows|processor|\bcpu\b|motherboard|\bcombo\b|inch screen|core ?i[3579]\b|ryzen [3579]|\bheat ?sink\b|\bcooler\b|\bnas\b|\bhdd\b|network attached|\d ?bay\b|android|kitkat|tv box", t):
+        return 'Memory/RAM'
+    # a Bluetooth unit with an AUX input and an SD card slot is a speaker even when the title never says so
+    if _s(r"\baux (&|and) sd card\b", head) and _s(r"bluetooth", head) and not _s(r"headset|headphone|earphone|earbud|\bmic\b|neckband|pen ?drive|flash drive", head):
+        return 'Speakers'
+    # a real graphics card, even when the title mentions its fans or says it is for a desktop
+    if _s(r"\b(gtx|rtx|rx|arc) ?a?\d{3,4}\b|\bgt ?-?\d{3,4}\b", head) and _s(r"\b\d+ ?gb\b", t) and _s(r"graphics card|\bgpu\b|gddr|video card", t) \
+            and not _s(r"^.{0,45}\b(bracket|stand|riser|holder|back ?plate|water ?block|support|bridge)\b", t) \
+            and not _s(r"[/ ]i[3579]-\d{4,5}|[/ ]r[3579]-\d{4}|\d ?gb ?\*\d|/\d+ ?gb ?\*|\bcable\b|\bmount\b|\bkit\b|adapter|laptop|\bcpu\b|core ?i[3579]|ryzen [3579]|\bssd\b|processor|motherboard|"
+                       r"mini pc|tiny|assembled|windows|nvlink|extender|multiplier|\bfan (for|replacement)|replacement fan", t):
+        return 'Graphics Card'
+    # parts that go in a case: drive trays, brackets, back plates and casings; PCIe and USB expansion cards, hubs, PSU extenders
+    if _s(r"\b(hdd|ssd|hard (drive|disk)|drive)\b.{0,12}\b(tray|bracket|back ?plate|casing|cage|bay)\b|\b(hard drive|hdd) back ?plate\b|\bhdd (modular )?bracket\b|\bcasing\b.{0,20}\b(hdd|ssd)\b", head) \
+            and not _s(r"\b\d+ ?(gb|tb)\b.{0,15}\b(portable|external) (hard|ssd)|\bw/ ?tray\b|with tray|\b\d+ ?(gb|tb)\b.{0,30}\b(sas|sata)\b", head):
+        return 'Accessories'
+    if _s(r"\b(psu|power supply)\b.{0,15}\bextender\b|\bextender cable\b|expansion card|usb-c to (vga|hdmi)|multi-?port hub|breakout board", head) \
+            and not _s(r"network|wi-?fi|ethernet|lan card|gigabit|qnap|thunderbolt", head):
+        return 'Accessories'
     # not PC products: furniture, coin-cell batteries, and 12 V switching supplies sold for LED strips and CCTV ("Other" is dropped)
     if _s(r"study table|\bhutch\b|wooden.{0,20}\b(table|desk)\b|\b(coin|button) cell\b|\bcr ?2032\b|lithium (button|coin)", head):
         return 'Other'
-    if _s(r"switching power supply|rain ?proof|weatherproof|regulated transformer|\bfor led\b|\bled (strip|driver|display|light)", t) and _s(r"smps|power supply|regulated transformer", t) \
+    if _s(r"switching power supply|rain ?proof|weatherproof|regulated transformer|\bfor led\b|\bled (strip|driver|display|light|panel)|strip light|\bcnc\b|\bcctv\b", t) and _s(r"smps|power supply|regulated transformer", t) \
             and not _s(r"\batx\b|modular|80 ?plus|pcie|\bsata\b|molex|gaming|\bcpu\b|motherboard|\bups\b|uninterruptible|\bva\b|cabinet|\bcase\b|chassis|\bmouse\b|keyboard|"
-                       r"optiplex|prodesk|elitedesk|thinkcentre|\bsff\b|desktop|\bdell\b|d-ell|\bhp\b|lenovo|\bpc\b|computer", t):
+                       r"optiplex|prodesk|elitedesk|thinkcentre|\bsff\b|desktop|\bdell\b|d-ell|\bhp\b|lenovo|\bpc\b|desktop computer|computer (case|power)", t):
         return 'Other'
     # a conference-room camera is a camera, not a microphone or a PC
     if _s(r"\b(conference|meeting|video[- ]conferenc\w*)( room)? (camera|cam)\b|\bptz\b.{0,30}camera", head) and not _s(r"\bheadset\b|\bmouse\b|\bkeyboard\b", head):
@@ -238,8 +262,8 @@ def _misfile_sweep(t):
     if _s(r"enclosure|enclousre|\b(m\.?2|nvme)\b.{0,25}\b(pcie?|pci-e)\b.{0,10}\badapter\b", head) and not _s(r"\bnas\b|\bfans?\b|cooling|cooler|panel mount|exhaust", head):
         return 'Accessories'
     # a gaming headset whose title lost the word "headset": it ends in Wired, Wireless, Bluetooth or Gaming and talks about mic, drivers or battery
-    if _s(r"\b(wired|wireless|bluetooth|gaming)\s*\)?\s*$", t) and _s(r"\bmic\b|surround|latency|\benc\b|\banc\b|drivers?\b|noise", t) \
-            and not _s(r"microphone|condenser|charger|converter|adaptor|smps|power supply|\bups\b|\bvolt|studio|\bxlr\b|lavalier|podcast|\bstand\b|\bmouse\b|keyboard|game ?controller|gamepad|joystick|speakers?\b|\bcable\b|adapter|webcam|camera|soundbar", t):
+    if _s(r"\b(wired|wireless|bluetooth|gaming)( (with|without) (a )?mic(rophone)?)?\s*\)?\s*$", t) and _s(r"\bmic\b|surround|latency|\benc\b|\banc\b|drivers?\b|noise|playtime|pairing|h_phone|stylist|with microphone", t) \
+            and not _s(r"\b(usb|desktop|condenser|studio mic|podcast|lavalier|gooseneck)\b.{0,20}microphone|microphone.{0,20}\b(gooseneck|stand|base)\b|condenser|charger|converter|adaptor|smps|power supply|\bups\b|\bvolt|\bxlr\b|lavalier|podcast|aux (&|and) sd card|\bstand\b|\bmouse\b|keyboard|game ?controller|gamepad|joystick|speakers?\b|\bcable\b|adapter|webcam|camera|soundbar", t):
         return 'Headset'
     # a PSP case or pouch is a gaming accessory
     if _s(r"\bpsp\b.{0,60}\b(case|bag|pouch|cover|charger|cable)\b|\b(case|bag|pouch|cover)\b.{0,50}\bpsp\b", head):
@@ -259,8 +283,8 @@ def _misfile_sweep(t):
     if _s(r"\b(iec ?(320)?|c14|c13)\b.{0,50}\b(adapter|converter|splitter|cable|cord|plug)\b|\beuro 2 pin\b|\bextension (power )?cable\b|\bvga ?2 ?hdmi\b|\btv-?out cable\b", head):
         return 'Accessories'
     # an assembled desktop sold with a Flipkart spec list: "(8 GB RAM/Intel HD Graphics/500 GB Hard Disk/.../Windows 10"
-    if _s(r"\(\s*\d+\s?gb\s?(ddr\d\s?)?ram\s?/", t) and _s(r"hard disk|ssd capacity|windows \d", t) and not laptopish \
-            and not _s(r"\b1[1-8](\.\d)?[- ]?(inch|\")", t):
+    if _s(r"\(\s*\d+\s?gb\s?(ddr\d\s?/|(ddr\d\s?)?ram\s?/)", t) and _s(r"hard disk|ssd capacity|windows \d", t) and not laptopish \
+            and not _s(r"\b1[1-8](\.\d)?[- ]?(inch(?! screen)|\")", t):
         return 'Desktop PC'
     if _s(r"^.{0,25}\bimac\b", t) and not _s(r"compatible|paste|cover|stand|sleeve", head):
         return 'Desktop PC'
@@ -269,9 +293,12 @@ def _misfile_sweep(t):
             and not _s(r"\baio\b|all[- ]?in[- ]?one|monitor|desktop|tower|mini pc|\bnuc\b|\binch screen\b|free ?sync|g-sync|adaptive ?sync|\bvesa\b|tablet|projector|\btv\b|sleeve|\bbag\b|\bskin\b|cover|charger|adapter|battery|screen (guard|protector)|"
                        r"\bstand\b|keyboard (cover|skin|protector|guard|for)|\bmouse\b|\bfan\b|cooler|\bdock|caddy|motherboard|upgrade kit|\bmm\b|jetdrive|server|optical bay", t):
         return 'Gaming Laptop'
-    # a monitor with built-in speakers is a monitor
-    if _s(r"\b\d{2}(\.\d)?[- ]?(inch|\")|\b\d{2,3}(\.\d+)? ?cm\b", head) and _s(r"\b(va|ips|tn|oled|qled|led|mini[- ]?led) (backlit )?panel\b|\bmonitor\b", t) \
-            and not _s(r"laptop|notebook|tablet|projector|\bpc speakers?\b|computer speakers?|soundbar|sound bar|\bmount\b|\bstand\b|\barm\b|cable|stage monitor|floor monitor", t[:60]) \
+    # a monitor with built-in speakers, or one sold "with stand", is a monitor
+    m60 = re.sub(r"with (an? )?(ergo |adjustable |height adjustable )?stand|adjustable stand monitor|stand monitor", " ", t[:60])
+    if _s(r"\badjustable stand monitor\b", head):
+        return 'Monitor'
+    if _s(r"\b\d{2}(\.\d)?[- ]?(inch|\"|\u2033|\u201d)|\b\d{2,3}(\.\d+)? ?cm\b", head) and _s(r"\b(va|ips|tn|oled|qled|led|mini[- ]?led) (backlit )?panel\b|\bmonitor\b", t) \
+            and not _s(r"laptop|notebook|tablet|projector|\bpc speakers?\b|computer speakers?|soundbar|sound bar|\bmount\b|\bstand\b|\barm\b|cable|stage monitor|floor monitor", m60) \
             and not _s(r"pc set|computer set|desktop (pc|computer)|gaming pc|\bcore ?i[3579]|\bi[3579][- ]\d{3,5}|\bryzen\b|\d+ ?gb ram|\bcpu\b|monitor (light|bar)|screen ?bar|light ?bar", t):
         return 'Monitor'
     # a wheel or a pad with a built-in speaker is still a gaming accessory
@@ -314,13 +341,14 @@ def _misfile_sweep(t):
             and not _s(r"replacement|\bcable\b|adapter|splitter|cover|\btips?\b|\bcase (for|compatible)|cotton|swab|cleaning|wax|speaker|\bmic(rophone)? only\b|\bmouse\b|keyboard|screen guard|tempered|protector|\bguard\b|glass", head):
         return 'Headset'
     # a USB, wireless or desktop microphone is a microphone; its stand, arm or cable is not
-    mic_m = _first(r"\b(microphones?|mic|mics?set)\b|\bmic(with|kit|rgb|set)\b", head)
+    head_ns = re.sub(r"\bno speakers?\b", " ", head)
+    mic_m = _first(r"\b(microphones?|mic|mics?set)\b|\bmic(with|kit|rgb|set|usb)\b", head)
     if mic_m >= 0 and _s(r"\b(usb|condenser|wireless|wired|lavalier|lapel|handheld|studio|gaming|desktop|clip|recording|speech)\b", head[:mic_m + 12]) \
-            and not _s(r"\bmic(rophone)?s? (stand|arm|boom|holder|clamp|tripod|pop|windscreen|shock|suspension|scissor)|scissor arm|boom arm|\bstand holder\b|sound ?card|audio adapter|usb adapter", head) \
-            and not _s(r"headset|headphone|earphone|speakers?\b|webcam|camera|\bcable\b|adapter only|\bmouse\b|keyboard|\bfor (iphone|android|phone)\b|replacement|without (a )?mic|\btws\b|party|sound system", head):
+            and not _s(r"\bmic(rophone)?s? (stand|arm|boom|holder|clamp|tripod|pop|windscreen|shock|suspension|scissor)|(?<!with )(scissor|boom) arm|\bstand holder\b|sound ?card|audio adapter|usb adapter", head) \
+            and not _s(r"headset|headphone|earphone|speakers?\b|webcam|camera|\bcable\b|adapter only|\bmouse\b|keyboard|\bfor (iphone|android|phone)\b|replacement|without (a )?mic|\btws\b|party|sound system", head_ns):
         return 'Microphone'
     # a Wi-Fi USB or PCIe adapter is networking gear
-    if _s(r"wi-?fi|wireless[- ]?n\d*|802\.11|(wireless|dual band).{0,40}\b(ac|ax)\d{3,4}\b|\b(ac|ax)\d{3,4}\b.{0,40}(wireless|dual band)|\d+ ?mbps|\bn\d{3}\b|ethernet adapter|to ethernet", head) and _s(r"\b(usb|pci(e| express)?|nano|mini)\b.{0,30}\b(adapter|dongle|card)\b|\b(adapter|dongle)\b", head) \
+    if _s(r"wi[- ]?fi|wireless[- ]?n\d*|802\.11|(wireless|dual band).{0,40}\b(ac|ax)\d{3,4}\b|\b(ac|ax)\d{3,4}\b.{0,40}(wireless|dual band)|\d+ ?mbps|\bn\d{3}\b|ethernet adapter|to ethernet", head) and _s(r"\b(usb|pci(e| express)?|nano|mini)\b.{0,30}\b(adapter|dongle|card)\b|\b(adapter|dongle)\b", head) \
             and not _s(r"headset|speaker|mouse|keyboard|camera|\bhdmi\b|display|projector|\btv\b|audio|\baux\b|\bcar\b|bluetooth (receiver|transmitter)|\bcable\b|\bstand\b|\d+ ?w\b|charger|\bpower\b|with ethernet", head):
         return 'Networking'
     # a keyboard is a keyboard, unless the listing is for a part of one (keycaps, wrist rest, cover, stand)
