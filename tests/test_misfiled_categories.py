@@ -6,6 +6,34 @@ from pph.group import slug
 from pph.normalize import type_of
 
 MISFILED = [
+    # --- over-reach caught by the frozen-category safety net while adding the rules above ---
+    ('Edifier R33BT Bluetooth Bookshelf Speakers 2.0 10 Watts (Black)', 'speakers'),
+    ('D9A Portable Wooden Desktop Speakers, USB Powered Stereo,for Laptop,Pc Sound Effect', 'speakers'),
+    ('40W Computer Speakers, Bluetooth Bookshelf Speakers,2.0 AC Powered Wooden PC Speakers with Strong Bass,7.28" X 2 AC Powered USB/Bluetooth PC Speakers USB Input for DSP Speaker for Laptop,PC (5201-EU)', 'speakers'),
+    ('FRONTECH Jasper Silver Premium Computer Cabinet, Home & Office Use, Front LED Strip with Control Button, 80mm Fan, USB 3.0, USB 2.0 & HD Audio Ports, Rear-Mounted SMPS (FT-4334)', 'pc-case-chassis'),
+    ('Foxin 1000VA/800W Online UPS with LED Display, Uninterruptible Power Supply with Battery Backup for Computer, Desktop PC, WiFi Router, Networking Devices & Security Systems | Home & Office UPS', 'ups'),
+    ('ZEBRONICS-Transformer-M with a High-Performance Gold-Plated USB Mouse: 6 Buttons, Multi-Color LED Lights,High-Resolution Sensor with max 3600 DPI, and DPI Switch(Black)', 'mouse'),
+    ('180W Power Supply for d-ell OPTIPLEX 3040 5040 7040 3650 3656 SFF Switching Power Supply H180AS-00 4R1KT 04R1KT 66P44', 'power-supply'),
+    ('SMPS Power Supply for Desktop ProDesk 280 G3 400 G5 600 G4 180W Switching Power Supply PSU DPS-180AB-27 B D18-180P1A L08404-003 L08404-002', 'power-supply'),
+    ('Direct Current UPS Uninterruptible Power Supply CE Certified DC Backup Switching Power Supply 86% Efficient for Emergency Systems, Security Psc-500-24', 'ups'),
+    # --- found by the whole-catalogue scan and the deep-page Chrome pass ---
+    ('Callas ST-40 Wooden Study Table with Hutch & Bottom Storage – Multi-Purpose Office Desk for Laptop, Computer, Writing & Study – Durable Engineered Wood Workstation for Home & Office (Walnut, ST-40)', 'other'),
+    ('ABOUT SPACE Study Table for Home with Bookshelf Hutch & Storage Cabinet - Wooden Computer Table for Home PC, Office Table for Work, Laptop Desk for Students (Flower Wenge, L 100 x B 50 x H 134 cm)', 'other'),
+    ('NOVEL CR2032 3V Lithium Button Cell Battery Pack of 5 | Coin Batteries for Motherboards, Key Fobs, Calculators, Remote Controls, Watches and Electronic Accessories', 'other'),
+    ('Quad NVMe PCIe 5.0 Adapter with Fan, RIITOP PCIe 5.0 x16 to 4X NVMe SSD Card (Comptible with PCI-e Bifurcation Motherboard)', 'accessories'),
+    ('MERISHOPP Lightblue Waterproof Case Bag Pouch for S.O.N.Y PSP Slim 1000 2000 3000 Console/ps5 case Bag/ps5 case Cover/ps5 case Plate/ps5 caset/ps5 case for Travel/ps5 case Hard/ps5 case Controller', 'gaming-accessories'),
+    ('TRIDEV TRADERS DC 12V 83A 1000W Switching Power Supply Universal Regulated Transformer (AC 220V/240V to DC 12Volt 83Ampere 1000Watts Suitable for LED Strips, car stereos, Wireless routers etc..', 'other'),
+    ('7SEVEN® 12V 1000W 83A SMPS Power Supply, Weatherproof & Rainproof Switching Power Supply for LED Signage, LED Strip & Decorative Lights, CCTV Surveillance Camera, Industrial Automation Machines & More', 'other'),
+    ('12V 400W SMPS Power Supply with Inbuilt Fan Cooling | DC 12 Volt 33A Adapter Transformer for LED Strip Lights, CCTV, 3D Printer, Industrial Use, Metal Body', 'other'),
+    ('NUROUM 360 Pro Conference Room Camera and Microphone 2026 Upgrade, 3 AI Video Modes, Conference Webcam with Noise Suppression, All in One Webcam for Zoom/Teams/GoogleMeet on PC/Laptop/Desktop', 'webcam'),
+    ('Dogfish mSATA 256GB SATA III 6Gb/s TLC 30x50mm SSD for Laptop Desktop PC', 'ssd'),
+    ("IRONTEK 320GB/5400RPM 320 GB Desktop, Laptop, All in One PC's, Surveillance Systems WHITE,GREY,BLACK S...", 'hdd'),
+    ('GIGASTONE SATA SSD 128GB (10-Pack) 2.5 inch SSD 520MB/s Upgrade Laptop PC Memory and Storage PS4 HDD Replacement 2.5" Internal Solid State Hard Drives SATA III SLC Cache 3D NAND Game Turbo Performance', 'ssd'),
+    ('APC UPS USB to RJ50 10P10C Control Cable for 940-0127B/0127C/0127E, AP9827', 'accessories'),
+    ('Thermal Grizzly Duronaut Pro 2g CPU Paste', 'thermal-paste'),
+    ('FINGERS TechneTium-850 High-Efficiency Power Supply SMPS with 6 SATA (5-pin) connectors (850 W Power Delivery, 12 cm Cooling Fan, 2000 RPM, 1.2 m Long Power Cable, 3-Year Warranty)', 'power-supply'),
+    ('ZEBRONICS ZS550w power supply 550 Watts Computer PSU with 2 SATA Cables', 'power-supply'),
+    ('ZOTAC GAMING GeForce RTX 4070 SUPER Twin Edge 12GB GDDR6X Graphic Card ZT-D40720E-10M', 'graphics-card'),
     # --- not PC products (sent to Other, which the site drops), and controls that stay in Other components ---
     ('Powerful Car Scratch Remover Wax 60g with Applicator Sponge | Car Paint Scratch Repair & Polish Cream | Removes Minor Scratches & Scuff Marks | All Car Colors(1 pcs) (02)', 'other'),
     ('Sprig Natural Bourbon Vanilla Extract 50 ml | Expensive But Authentic | Made With Madagascar Vanilla Beans | 100% Alcohol Free | Natural Alternative for Essence | For Baking, Protein Shakes, Brownies & Desserts', 'other'),
@@ -124,7 +152,7 @@ MISFILED = [
     ('Keychron Premium Coiled Aviator Cable, USB Type-C, 5-Pin GX16, 108cm, Rainbow Plated Black', 'accessories'),
     ('Softline Pro SP RJ111 Foldable Podcast Microphone Stand 360° Adjustable Desktop Mic Arm Stand Microphone Stand', 'accessories'),
     ('QOMO 4K Webcam ePTZ Conference Camera with Microphone, Ai Face Tracking,120°FOV Computer Camera,USB Plug and Play Webcam for Mac/PC/Laptop, Zoom/Skype/Facetime/Google Meet/Video Conferencing', 'webcam'),
-    ('Nuroum C20 Video Conference Camera with Microphone and Speaker, 3-in-1 Webcam 1080P Full HD, 100° Ultra Wide Angle Webcam with Noise Reduction, USB-A for Zoom/Skype/Teams/Mac/PC/Windows', 'speakers'),
+    ('Nuroum C20 Video Conference Camera with Microphone and Speaker, 3-in-1 Webcam 1080P Full HD, 100° Ultra Wide Angle Webcam with Noise Reduction, USB-A for Zoom/Skype/Teams/Mac/PC/Windows', 'webcam'),
     ('boAt Partypal 30, Wired Mic for Karaoke, 6H Battery, RGB LED, TWS Mode, EQ Modes 25 W Bluetooth Speaker', 'speakers'),
     ('VOIZO Bluetooth Sound System 10W Bass, RGB LED, Mic, USB, AUX 10 W Bluetooth Party Speaker', 'speakers'),
     ('kp,enterprises Pro 2 Bluetooth TWS with Charging Case Wired without Mic', 'headset'),

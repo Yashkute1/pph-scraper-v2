@@ -212,8 +212,30 @@ def _misfile_sweep(t):
     head = t[:90]
     laptopish = _s(r"laptop|notebook|chromebook|macbook|thin and light|ultrabook|vivobook|zenbook|ideapad|thinkpad|thinkbook|inspiron|\bxps\b|\baspire\b|\bswift\b|handheld|\bally\b|\blegion\b|\bnitro\b|\bvictus\b", t)
     has_rating = _s(r"\d(\.\d+)? ?k?va\b|\bkva\b", t)
+    # not PC products: furniture, coin-cell batteries, and 12 V switching supplies sold for LED strips and CCTV ("Other" is dropped)
+    if _s(r"study table|\bhutch\b|wooden.{0,20}\b(table|desk)\b|\b(coin|button) cell\b|\bcr ?2032\b|lithium (button|coin)", head):
+        return 'Other'
+    if _s(r"switching power supply|rain ?proof|weatherproof|regulated transformer|\bfor led\b|\bled (strip|driver|display|light)", t) and _s(r"smps|power supply|regulated transformer", t) \
+            and not _s(r"\batx\b|modular|80 ?plus|pcie|\bsata\b|molex|gaming|\bcpu\b|motherboard|\bups\b|uninterruptible|\bva\b|cabinet|\bcase\b|chassis|\bmouse\b|keyboard|"
+                       r"optiplex|prodesk|elitedesk|thinkcentre|\bsff\b|desktop|\bdell\b|d-ell|\bhp\b|lenovo|\bpc\b|computer", t):
+        return 'Other'
+    # a conference-room camera is a camera, not a microphone or a PC
+    if _s(r"\b(conference|meeting|video[- ]conferenc\w*)( room)? (camera|cam)\b|\bptz\b.{0,30}camera", head) and not _s(r"\bheadset\b|\bmouse\b|\bkeyboard\b", head):
+        return 'Webcam'
+    # a PCIe card that holds NVMe drives is an accessory, not a motherboard or a fan
+    if _s(r"^\W*(quad|dual|2|4) ?x? nvme\b.{0,20}\badapter\b|\bpcie? [345]\.0 x\d+ to \d ?x nvme", head):
+        return 'Accessories'
+    # a bare SSD or hard drive named by capacity is a drive, even when it says "for desktop" or "for PS4"
+    if (_s(r"\bmsata\b.{0,60}\bssd\b|^\W*\w+ (sata |nvme |m\.2 )?ssd \d+ ?(gb|tb)\b", head)) \
+            and not _s(r"enclosure|adapter|caddy|cable|reader|\bram\b|bracket|heat ?sink", head):
+        return 'SSD'
+    if _s(r"\b\d+ ?gb ?/ ?(5400|7200) ?rpm\b|\b\d+ ?(gb|tb)\b.{0,12}\b(5400|7200) ?rpm\b", head) and not _s(r"\bssd\b|\bram\b|ryzen|core ?i\d|\bcpu\b|enclosure|adapter|caddy", t):
+        return 'HDD'
+    # a PSP case or pouch is a gaming accessory
+    if _s(r"\bpsp\b.{0,60}\b(case|bag|pouch|cover|charger|cable)\b|\b(case|bag|pouch|cover)\b.{0,50}\bpsp\b", head):
+        return 'Gaming Accessories'
     # things that go with a UPS, a speaker, a motherboard or a cabinet are accessories, not the thing itself
-    if _s(r"\bups\b", t) and _s(r"wall mount|under desk|mount (for|bracket|kit)|bracket|splitter|iec ?320|\bc1[34]\b.{0,30}(cord|cable|adapter|splitter|converter)|power cord|extension", t) \
+    if _s(r"\bups\b", t) and _s(r"wall mount|under desk|mount (for|bracket|kit)|bracket|splitter|rj ?50|usb to rj|control cable|iec ?320|\bc1[34]\b.{0,30}(cord|cable|adapter|splitter|converter)|power cord|extension", t) \
             and not has_rating and not _s(r"online|line[- ]interactive|double[- ]conversion|inverter|back-?ups|battery backup|tower model|rack-?mount model|\bw(att)?s?\b", t):
         return 'Accessories'
     if ((_s(r"\b(laptop|notebook|internal) speakers?\b|speakers? (left|right)", head) and _s(r"compatible|\bfits?\b|replacement|\bfor (lenovo|asus|hp|dell|acer|msi|apple)\b", t))
@@ -329,7 +351,7 @@ def _misfile_sweep(t):
             and not _s(r"laptop|desktop pc|motherboard|\bups\b|thermal paste", head):
         return 'Fans & Cooling'
     # thermal pads, adhesive and compound are thermal paste, not fans
-    if _s(r"\bthermal (pads?|adhesive|compound|conductive|grease|paste)\b|\b(silicone|sillicon|silicon) pad\b|thermal conductivity pad", head) and not _s(r"\bfan\b|cooler|laptop cooling|cooling pad with|\bpreapplied\b|pre-applied", head):
+    if _s(r"\bthermal (pads?|adhesive|compound|conductive|grease|paste)\b|thermal grizzly|duronaut|kryonaut|\bcpu paste\b|\b(silicone|sillicon|silicon) pad\b|thermal conductivity pad", head) and not _s(r"\bfan\b|cooler|laptop cooling|cooling pad with|\bpreapplied\b|pre-applied", head):
         return 'Thermal Paste'
     # accessories for a console are not games
     if _s(r"\b(xbox|ps[45]|playstation|nintendo|switch)\b.{0,60}\baccessor(y|ies)\b|\baccessor(y|ies)\b.{0,40}\b(xbox|ps[45]|playstation|nintendo|switch)\b|\bhandheld\b.{0,40}\b(game station|game console|console)\b|\bgame station\b", t[:140]) \
