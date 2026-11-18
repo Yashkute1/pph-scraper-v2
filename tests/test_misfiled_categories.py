@@ -6,6 +6,27 @@ from pph.group import slug
 from pph.normalize import type_of
 
 MISFILED = [
+    ('Lapcare Cube IX CCTV UPS with Lithium-ion Battery | 5.2Ah Backup | Auto Switch Over | DC12V Output | Deep Discharge | Supports 6 CCTV Cameras | Compact and Portable | Made in India', 'ups'),
+    ('EF ECOFLOW DELTA 2 Portable Power Station | 1-3kWh Expandable | LiFePO4 Battery, 80Min Charge | 230V/50Hz India Use | Solar Generator for Home Backup, Camping, RV', 'other'),
+    # --- loose UPS batteries are accessories; UPSes that mention a battery stay UPS (Chrome deep-page pass) ---
+    ('Amaron Quanta 12 AL 007 7.2 AH UPS Battery (White)', 'accessories'),
+    ('AMAID -Standard 12V 12AH SMF Battery for Use in UPS/Solar and More Instruments. 12 V Offline/Standby Tower Model UPS 2 Outlet Plugs', 'accessories'),
+    ('AMARON Quanta VRLA 12-12/12V, 12AH at C20 SMF UPS-Emergency Battery for Use in UPS/Solar and More Instruments 12 V Offline/Standby Rack-mount Model UPS 2 Outlet Plugs', 'accessories'),
+    ('Microtek MSMF 7.2-12 12V 7.2Ah Sealed Maintenance Free VRLA Battery for UPS, Emergency Lighting, Medical Equipment, Telecom, Weighing Machines & Power Backup (Pack of 1)', 'accessories'),
+    ('High Frequency 12V 8Ah Solar UPS Toy Car Bike Medical Device Sprayer Pump Street Lights Battery 12 V Online/double-conversion Tower Model UPS with Overload Protection 2 Outlet Plugs', 'accessories'),
+    ('EXIDE 7.2Ah battery for UPS 12 V Offline/Standby Tower Model UPS with Overload Protection 0 Outlet Plugs', 'accessories'),
+    ('Mighty Max Battery 12V 12AH F2 Replacement APC Smart-UPS Back-UPS 620 SU620NET RBC 4 RBC4 Battery', 'accessories'),
+    ('12v 18ah LiFePO4 Rechargeable Battery Built-in 30A BMS 230.2Wh Output Power, Computer ups, Solar,Low Self-Discharge, for Fish Finder, Fans, Toys, LED Light, Security Camera, Camping', 'accessories'),
+    ('battery compatible with APC BK400 BK400B BK500M computer back up UPS', 'accessories'),
+    ('(2 pc) Flyrobo LX-2BUPS 3A 18650 Lithium Battery UPS Boost Module Type-C 9V', 'accessories'),
+    ('SB40 Connector for UPS, Solar Installation, Battery Connection, E-Bike, 40A DC Load, 1 Pair (2 nos)', 'accessories'),
+    ('AMARON HI-Backup 880VA UPS + 200 AH Battery + Trolley, White and Green', 'ups'),
+    ('FRONTECH UPS Electra Static Converter - 1KVA/600W | 12/7Ah x 2 Lead Acid Batteries, Maintenance Free Battery, LED Indicator, Power Backup & Protection for Home/Office PC and Desktop, (2566 - Black)', 'ups'),
+    ('Trenzu 12V Mini UPS for WiFi Router | 10400mAh Battery Backup up to 10 Hours Power Backup for Router', 'ups'),
+    ('Microtek Desire Pro+ 1000VA UPS | 12V Battery | Simulated Sine Wave | Auto Restart | Input 140-300V AC | Output 220/230V ±10% | Ideal for PCs, Routers, Home Office Backup', 'ups'),
+    ('APC Easy UPS Online SRV10KUXI-IN 10000VA / 10000W Double Conversion UPS | External Battery Ready for Hospitals, Data Centers| 230V | 2 Year Warranty', 'ups'),
+    ('Tripp Lite 750VA UPS Desktop Battery Back Up 12 Outlet 450W 120V Standby Ultra-Compact USB INTERNET750U 750VA/450W', 'ups'),
+    ('ZEBRONICS Ups Battery_A3 230 V Offline/Standby Tower Model UPS with Overload Protection 2 Outlet Plugs', 'ups'),
     # --- last model-only titles in Other components ---
     ('ADATA 2TB LEGEND MAX 960 GEN4 7400/6800 ALEG-960M-2TCS', 'ssd'),
     ('ANT ESPORTS WIRELESS USB DONGGLE (AE300D)', 'networking'),
