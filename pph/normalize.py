@@ -580,6 +580,32 @@ _RESCUE = [
               r"photography (light )?reflector|\bgimbal\b|selfie (stick|gimbal)|led coasters?|guitar practice|iron-?on|\bnfc ?card\b|metal card|watch (travel )?(case|roll)|^\W*custom pc( product)?\b|"
               r"mobile repairing|chip level|prompt engineering|maintenance technician book|video course|boron nitride|mobile cleaning solution|automotive|"
               r"(screen guard|screen protector|tempered glass).{0,60}(redmi|realme|narzo|huawei|matepad|\bpad\b|phone|mobile|iphone|galaxy)", None, None),
+    # more listings that are not PC products: order-entry rows, printer ink, craft-cutter blades, watches, tablets, projectors, recorders,
+    # shop equipment, chemicals, books, cufflinks, gimbals, drinks bottles, floor mats, meanwell supplies, inverters
+    ('Other', r"^\W*(beginners|matrix|starter|titanium|budget|office|gaming) pc \d\b|\bink\b.{0,20}\b(canon|hp|epson|brother)\b|^\W*asv ink|\bcircuit (deep-point|engraving|knife)|galaxy watch|\blenovo tab\b|"
+              r"pixaplay|prejector|\bprojector\b|voice recorder|currency counter|note counter|\btvs msp\b|lamination machine|wd-40|rubbing alcohol|zero to mastery|cufflinks|sealing strip|anti-collision|"
+              r"\bmeanwell\b|\blrs-\d|\bluminous\b|portuguese|\bhohem\b|isteady|hydrator|floor mat|steadymat|\bc clip\b", None, None),
+    # games whose title lost the console word or carries only an edition or a year
+    ('Games', r"\((day (1|one)|special|ace|standard|deluxe|limited|collector.s) edition\)|day (1|one) edition|\bedition \| (playstation|xbox|nintendo)|\bfor (ps5|xbox series x)\b|\(ps5\)\s*$|^\W*ps5 \w|"
+              r"\b(xbox( 360)?|nintendo)\b[^|]{0,14}\(\d{4}\)|\bnintendo eshop\b|^\W*nintendo (princess|mario|zelda|pokemon)|\bastro bot\b|^\W*xbox 360\b", None,
+     r"\bconsole\b|\bskin\b|decal|\bkit\b|\bcase\b|\bstand\b|charger|controller|headset|\bcable\b|adapter|hdmi|cooling|\bdock\b|\bgrip\b|\bbag\b|cover|\bfan\b|\bssd\b|\bdrive\b|\bcamera\b|\bmouse\b|keyboard|\d+ ?gb with|\bgs5\b|retro|game ?stick"),
+    ('Fans & Cooling', r"\bacfan\d+|\bacfre\d+|hyper 212|\bak\d{3}\b|\barctic (f|p|bionix)\d{2}\b|freezer 4u|\bsst-ff\d+", None, None),
+    ('Accessories', r"\bsst-ecm\d+|ear ?cushions?|lube (brush|combo kit)|switch opener|\bbracket\b|\btype ?-?c to \d ?x ?usb", None, None),
+    ('PC Case/Chassis', r"^\W*circle (furious|elegantor|defender)\b|\bmeshify\b|fabric mood|\bdivider \d{3}\b|\bsst-(rc|ls|nb|pi)\d{2}", None, r"\bkit\b|accessor|side panel|riser|\bfilter\b|multibracket"),
+    ('Graphics Card', r"\bgv-[nr]\d{3,4}|pci_e.{0,10}gddr", None, None),
+    ('Processor/CPU', r"\b(core|ryzen)\b.{0,40}\bproces+or\b", None, None),
+    ('Power Supply', r"^\W*antec cx\d{3}", None, None),
+    ('Speakers', r"^\W*spk\b|\bedifier r\d{2}\b", None, None),
+    ('Headset', r"headbug|tuf gaming h\d|\bearpods\b|\btune (beam|buds|\d)|nothing ear|edifier w\d{3}|logitech (zone vibe|h\d{3}|g733)|true wireless|linkbuds|on the ear|fone de ouvido|\bphilips (audio )?ta[eh]\d", None, None),
+    ('Keyboard', r"aula hero 68|redragon k\d{3}|mechanical numpad|gaming combo kit", None, None),
+    ('Networking', r"network interface card|\busb-ac\d+|\bdeco m\d", None, None),
+    ('Gaming Accessories', r"xscreen|(racing )?simulator wheel|driving force|racing gaming wheel|hand brake|chargeplay|(norzic|nitho).{0,20}charging station|dust[- ]?proof (silicone )?kit|vinyl skin|"
+              r"\bbase station\b|razer (bungee|dock|power up)|gamevision|game ?stick|wireless console|\bplay console\b|\bcosmic byte ares\b", None, None),
+    ('Gaming Chair', r"ergonomic gaming|retractable footrest|high back.{0,40}ergonomic|ergonomic revolving", None, None),
+    ('Monitor', r"^\W*led \d{2}\b|\b\d{2}(\.\d)? ?-?inch\b.{0,30}(business|borderless|bezel|uwqhd)|\bmp341cq\b", None, None),
+    ('Desktop PC', r"\b90xs\d{4}in\b", None, None),
+    ('SSD', r"\bwd blue sa\d{3}|blue sa510|extreme portable e61", None, None),
+    ('Memory/RAM', r"\b\d ?x ?\d{1,2} ?gb\b.{0,12}\b\d{4} ?mhz\b|\bcl\d{2}\b.{0,12}\b\d ?x ?\d{1,2} ?gb\b", None, r"\bssd\b|nvme|laptop"),
     ('PC Case/Chassis', r"dual-chamber case|\bfans? case\b", None, None),
     # brand and model families that the general rules never learned (checked only on titles left in Components)
     ('Accessories', r"\bhdmi\b.{0,25}\b(mtr|meters?)\b|(laptop|notebook) (gaming )?cooler|cooling pad|\bcassing\b|(hdd|ssd) case\b|shock resistant case", None, None),
@@ -628,7 +654,7 @@ _RESCUE = [
      None, r"controller|cover|\bcase\b|\bstand\b|headset|cable|charger|\bdock\b|grip|skin|strap|adapter|\bbag\b|console|office|windows|microsoft|licen[sc]e|antivirus|upgrade"),
     ('Gaming Accessories', r"\b(game (console|station|stick)|gaming console|video game|retro|gs5 ?pro|inbuilt games|built-in (retro|classic|games)|capture (card|device|mini)|magnetic cover|giochi per console|xenoplay)\b",
      None, r"mouse|keyboard|headset|speaker"),
-    ('Networking', r"wi-?fi|wireless[- ]n\b|802\.11|range extender|access point|ethernet|network adapter|\b(ac|ax|be)\d{3,4}\b|\d+ ?mbps", None, r"headset|speaker|mouse|keyboard|camera|watch|hdmi|\bcable\b|charger|\d+ ?w\b|" + _NOT_PC),
+    ('Networking', r"wi-?fi|wireless[- ]n\b|802\.11|range extender|access point|ethernet|network adapter|\b(ac|ax|be)\d{3,4}\b|\d+ ?mbps", None, r"headset|speaker|mouse|keyboard|camera|watch|hdmi|\bcable\b|charger|\b\d+ ?w\b|" + _NOT_PC),
     ('Accessories', r"\b(cable|extender|extension|adapter|adaptor|dongle|converter|carrying case|hard shell)\b", None, None),
 ]
 
