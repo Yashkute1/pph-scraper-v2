@@ -290,3 +290,23 @@ def test_server_exports_are_written_from_the_database(db, tmp_path):
     sample = json.loads(gzip.decompress((tmp_path / "exports/sample.json.gz").read_bytes()))
     assert len(sample["products"]) == 3 and len(sample["offers"]) == 3
     assert sorted(p.name for p in (tmp_path / "exports").iterdir()) == ["offers.tsv.gz", "products.tsv.gz", "sample.json.gz"]
+
+
+def test_amazon_offers_keep_no_history_in_mysql(db):
+    from pph.sql_db import write_store
+    for n in (0, 1):
+        write_store(db, "amazon", [o("amazon", 1)], day(n), blocked=False)
+    assert q(db, "SELECT history FROM offers WHERE store='amazon'")[0][0] == "[]"
+
+
+def test_stored_amazon_history_is_cleared_only_when_asked(db, tmp_path):
+    from pph.sql_db import clear_amazon_history, write_store
+    from tools.hostinger_sync import JOBS
+    write_store(db, "a", [o("a", 1)], day(0), blocked=False)
+    write_store(db, "amazon", [o("amazon", 1), o("amazon", 2)], day(0), blocked=False)
+    with db.cursor() as cur:
+        cur.execute("UPDATE offers SET history=%s", ('[{"d":"2026-10-01","p":5}]',))
+    assert JOBS["amazon-history-clear"](None, db, day(0)) == {"cleared": 2}
+    assert [r[0] for r in q(db, "SELECT history FROM offers WHERE store='amazon'")] == [None, None]
+    assert q(db, "SELECT history FROM offers WHERE store='a'")[0][0] != None
+    assert clear_amazon_history(db) == {"cleared": 0}

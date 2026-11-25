@@ -145,3 +145,22 @@ def test_benchmark_attached_when_lookup_given():
 def test_facets_on_the_row():
     row, = rollup([offer("a", 100)], NOW)
     assert row["facets"] == {"series": "Ryzen 5", "socket": "AM4"}
+
+
+def _week(price):
+    return [{"d": f"2026-09-{d:02d}", "p": price} for d in range(24, 31)]
+
+
+def test_amazon_prices_never_make_a_low_or_a_drop():
+    row, = rollup([offer("amazon", 800, history=[{"d": "2026-10-01", "p": 500}]), offer("a", 1000, history=_week(1500))], NOW)
+    assert row["best_store"] == "amazon" and row["low_90d"] == 1000 and row["drop_pct"] == 0
+
+
+def test_a_drop_is_read_from_other_stores_only():
+    row, = rollup([offer("amazon", 1200, history=_week(100)), offer("a", 1000, history=_week(1500))], NOW)
+    assert row["best_store"] == "a" and row["drop_pct"] == round(500 / 1500 * 100, 1)
+
+
+def test_a_product_only_amazon_sells_has_no_low():
+    row, = rollup([offer("amazon", 800, history=_week(900))], NOW)
+    assert row["low_90d"] is None and row["drop_pct"] == 0

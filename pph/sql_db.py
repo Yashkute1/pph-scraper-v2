@@ -15,6 +15,7 @@ from .benchmarks import build_lookup
 from .group import rollup
 from .merge import merge_map
 from .normalize import recategorize
+from .group import AMAZON
 from .store_db import BATCH, DELETE_AFTER, MISSED_LIMIT, _history, gate, offer_id  # noqa: F401  (shared rules)
 
 SIZE_BUDGET = int(2.5 * 1024 ** 3)       # Hostinger gives each database 3 GB
@@ -199,7 +200,7 @@ def write_store(db, store, offers, now, blocked, started=None, note="", complete
             for oid, o in unique.items():
                 old = json.loads(existing[oid]) if existing.get(oid) else []
                 doc = dict(o, last_seen=now, first_seen=now, missed_runs=0,
-                           history=_history(old, day, o["price"], o.get("in_stock", True)))
+                           history=_history(old, day, o["price"], o.get("in_stock", True), store))
                 rows.append(offer_row(oid, doc))
             _upsert_offers(cur, rows)
             run["written"] = len(rows)
@@ -286,6 +287,13 @@ def trim_history(db, keep=30):
         cur.execute("SELECT id, history FROM offers")
         rows = [(json.dumps(json.loads(h)[-keep:], separators=(",", ":")), i) for i, h in cur.fetchall() if h and len(json.loads(h)) > keep]
         _many(cur, "UPDATE offers SET history=%s WHERE id=%s", rows)
+
+
+def clear_amazon_history(db):
+    """Empty every stored Amazon price history. Irreversible, so it runs only when asked for by name."""
+    with db.cursor() as cur:
+        cur.execute("UPDATE offers SET history=NULL WHERE store=%s AND history IS NOT NULL AND history<>'[]'", (AMAZON,))
+        return {"cleared": cur.rowcount}
 
 
 def recategorize_offers(db, now):

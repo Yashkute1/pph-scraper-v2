@@ -185,3 +185,18 @@ def test_an_address_the_store_moved_goes_at_once(db):
     urls = {d['url'] for d in db.offers.find()}
     assert "https://a.test/p/0" not in urls and "https://a.test/p/0-new" in urls
     assert "https://a.test/p/4" in urls                                          # an unseen part still ages as before
+
+
+def test_amazon_prices_are_never_kept_as_history():
+    from pph.store_db import _history
+    old = [{"d": "2026-11-01", "p": 9}]
+    assert _history(old, "2026-11-02", 10, True, "amazon") == []
+    assert _history(old, "2026-11-02", 10, False, "amazon") == []
+    assert len(_history(old, "2026-11-02", 10, True, "a")) == 2
+
+
+def test_writing_amazon_offers_keeps_no_history():
+    db = mongomock.MongoClient().pph_site
+    for n in (0, 1):
+        write_store(db, "amazon", [o("amazon", 1)], day(n), blocked=False)
+    assert db.offers.find_one({"store": "amazon"})["history"] == []

@@ -139,7 +139,14 @@ def _job_redirects(repo, db, now):
     return load_redirects.load(db if db is not None else R._connect(), pairs, when)
 
 
-JOBS = {"rollup": _job_rollup, "redirects": _job_redirects}
+def _job_clear_amazon(repo, db, now):
+    """Delete stored Amazon price history (irreversible)."""
+    from pph import run as R
+    from pph import sql_db
+    return sql_db.clear_amazon_history(db if db is not None else R._connect())
+
+
+JOBS = {"rollup": _job_rollup, "redirects": _job_redirects, "amazon-history-clear": _job_clear_amazon}
 
 
 def run_job(repo, state, exports=None, db=None, now=None):

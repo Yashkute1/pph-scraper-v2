@@ -7,6 +7,7 @@ from statistics import median
 from .benchmarks import match as match_benchmark
 from .facets import facets_of
 
+AMAZON = "amazon"          # no price history, low or drop is ever built from this store's prices
 MAX_DISCOUNT = 0.85      # a bigger "discount" is almost always a mismatched or fake MRP
 DROP_MIN_DAYS = 7        # no "price dropped" claim until a week of history exists
 DROP_WINDOW = 30
@@ -19,11 +20,13 @@ def slug(s):
 
 
 def _drop_pct(members, best, now):
-    if not best.get("in_stock"):
+    if not best.get("in_stock") or best["store"] == AMAZON:
         return 0
     since = (now - timedelta(days=DROP_WINDOW)).strftime("%Y-%m-%d")
     per_day = {}
     for o in members:
+        if o["store"] == AMAZON:
+            continue
         for h in o.get("history") or []:
             if h.get("p") and h.get("d", "") > since:
                 per_day[h["d"]] = min(h["p"], per_day.get(h["d"], h["p"]))
@@ -58,7 +61,8 @@ def _row(gid, members, now, benchmarks=None):
     mrp = best.get("mrp") or 0
     if not (mrp > best["price"] and 1 - best["price"] / mrp <= MAX_DISCOUNT):
         mrp = None
-    points = [h["p"] for o in members for h in (o.get("history") or []) if h.get("p")]
+    tracked = [o for o in members if o["store"] != AMAZON]
+    points = [h["p"] for o in tracked for h in (o.get("history") or []) if h.get("p")]
     return {
         "group_id": gid, "title": best["title"], "brand": best.get("brand"), "category": best.get("category"),
         "image": best.get("image") or next((o["image"] for o in offers + members if o.get("image")), ""),
@@ -67,7 +71,7 @@ def _row(gid, members, now, benchmarks=None):
         "stores": [o["store"] for o in offers],
         "offers": [{"id": o.get("_id"), "store": o["store"], "price": o["price"], "in_stock": bool(o.get("in_stock")),
                     "url": o["url"], "checked": o.get("last_seen")} for o in offers],
-        "low_90d": min(points + [o["price"] for o in members]), "updated_at": now, "specs": best.get("specs") or {},
+        "low_90d": min(points + [o["price"] for o in tracked], default=None), "updated_at": now, "specs": best.get("specs") or {},
         "category_slug": slug(best.get("category")), "brand_slug": slug(best.get("brand")),
         "drop_pct": _drop_pct(members, best, now), "spread_pct": _spread_pct(offers),
         "benchmark": match_benchmark(best["title"], best.get("category"), benchmarks),
