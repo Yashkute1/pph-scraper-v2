@@ -16,6 +16,8 @@ import urllib.request
 TOKEN_HOSTS = {"3.1": "api.amazon.com", "3.2": "api.amazon.co.uk", "3.3": "api.amazon.co.jp"}
 GET_ITEMS = "https://creatorsapi.amazon/catalog/v1/getItems"
 MARKETPLACE = "www.amazon.in"
+# The same list the scraper asks for (pph/amazon_api.py), so a new name can be tried against the live API first.
+RESOURCES = ["itemInfo.title", "offersV2.listings.price", "offersV2.listings.availability", "images.primary.large"]
 
 
 def post(url, body, headers):
@@ -70,7 +72,7 @@ def main(asins):
         return 1
     print(f"token: ok (version {version}, {host}, expires in {tok.get('expires_in')} s)")
     body = {"itemIds": asins, "itemIdType": "ASIN", "partnerTag": tag, "marketplace": MARKETPLACE,
-            "resources": ["itemInfo.title", "offersV2.listings.price", "offersV2.listings.availability"]}
+            "resources": RESOURCES}
     status, text = post(GET_ITEMS, body, {"Authorization": f"Bearer {tok['access_token']}", "x-marketplace": MARKETPLACE})
     print(f"getItems: HTTP {status}")
     for line in summarize(text):

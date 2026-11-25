@@ -21,13 +21,18 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit, urlunsplit
 
 SITE_ENV = pathlib.Path.home() / "domains/pcparthunt.com/hbuilds/config/.env"
 BRANCH = "origin/scrapes"
 JOBS_BRANCH = "origin/server-jobs"
 EXPORTS = pathlib.Path.home() / "pph/exports"
+AMAZON_SECONDS = 480       # the most one run spends asking Amazon (cron runs every 10 minutes)
+ROLLUP_EVERY = timedelta(hours=6)    # Amazon prices expire even when no new scrape arrives
+AMAZON_ENV = ("AMAZON_CREATORS_CREDENTIAL_ID", "AMAZON_CREATORS_CREDENTIAL_SECRET", "AMAZON_CREATORS_CREDENTIAL_VERSION",
+              "AMAZON_PARTNER_TAG")
 TRIES = 3                  # a commit that keeps failing is given up after this many runs, so one bad file cannot loop
 
 
@@ -42,6 +47,46 @@ def local_url(env_text):
         return None
     auth = p.netloc.rsplit("@", 1)[0] + "@" if "@" in p.netloc else ""
     return urlunsplit((p.scheme, f"{auth}127.0.0.1:{p.port or 3306}", p.path, p.query, ""))
+
+
+def env_values(env_text, names):
+    """The non-empty values a .env text gives for `names`."""
+    out = {}
+    for name in names:
+        m = re.search(rf"^[ \t]*(?:export[ \t]+)?{re.escape(name)}[ \t]*=[ \t]*(.*?)[ \t]*$", env_text, re.M)
+        value = m.group(1).strip().strip("'\"") if m else ""
+        if value:
+            out[name] = value
+    return out
+
+
+def amazon_step(db, env, now, api=None, log=print):
+    """Refresh due Amazon prices (when there are credentials), then roll up if any changed or the products are old,
+    so a price past its day leaves the site. True when it rolled up."""
+    from pph import amazon_api
+    from pph import run as R
+    from tools import amazon_refresh
+    changed = False
+    try:
+        if api is None:
+            creds = amazon_api.credentials(env)
+            api = amazon_api.AmazonApi(creds) if creds else None
+        if api is not None:
+            from pph.sql_db import ensure_indexes
+            ensure_indexes(db)
+            out = amazon_refresh.refresh(db, api, now, deadline=time.monotonic() + AMAZON_SECONDS)
+            changed = bool(out["priced"] or out["blanked"])
+            if out["asked"] or out["note"]:
+                log("amazon: " + json.dumps(out))
+    except Exception as e:                                # expiry below must still happen
+        log(f"amazon: {R.safe_error(e)}")
+    with db.cursor() as cur:
+        cur.execute("SELECT MAX(updated_at) FROM products")
+        last = cur.fetchone()[0]
+    if changed or not last or now - last >= ROLLUP_EVERY:
+        R.rollup_cmd(db=db, now=now)
+        return True
+    return False
 
 
 def git(repo, *args):
@@ -202,8 +247,16 @@ def main(argv=None):
     try:
         code, summary = sync(repo, state)
         job = run_job(repo, state)
+        rolled = False
+        try:
+            env_text = SITE_ENV.read_text() if SITE_ENV.exists() else ""
+            env = {**env_values(env_text, AMAZON_ENV), **{k: v for k, v in os.environ.items() if k in AMAZON_ENV and v}}
+            rolled = amazon_step(R._connect(), env, datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0))
+        except Exception as e:
+            print("amazon:", R.safe_error(e), file=sys.stderr)
+            code = code or 1
         # Only after the database changed, and once at the start so the files exist. A failure here leaves the last good files.
-        if summary.get("written") or job or not (EXPORTS / "offers.tsv.gz").exists():
+        if summary.get("written") or job or rolled or not (EXPORTS / "offers.tsv.gz").exists():
             try:
                 refresh_exports(R._connect())
             except Exception as e:

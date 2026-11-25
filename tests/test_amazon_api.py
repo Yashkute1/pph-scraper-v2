@@ -531,3 +531,12 @@ def test_an_offer_the_api_did_not_answer_has_no_time_and_no_photo():
     out, _ = enrich([scraped("B000000002")], Items(), now=lambda: AT)
     assert "api" not in out[0] and "price_at" not in out[0] and out[0]["image"] == ""
     assert out[0]["price"] == 1000
+
+
+def test_the_probe_asks_for_what_the_scraper_asks_for(monkeypatch):
+    """The probe is how a new resource name is checked against the live API before release."""
+    import inspect
+
+    from pph import amazon_api
+    from tools import amazon_api_probe
+    assert "RESOURCES" in inspect.getsource(amazon_api_probe.main) and amazon_api_probe.RESOURCES == amazon_api.RESOURCES

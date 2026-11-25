@@ -117,3 +117,10 @@ def test_a_job_that_fails_says_so_without_the_error_text(repo, tmp_path, monkeyp
     request(repo, {"job": "rollup", "id": "9"})
     result = run_job(repo, state, exports=tmp_path / "exports", now=NOW)
     assert result["status"] == "failed" and "secret" not in json.dumps(result)
+
+
+def test_amazon_credentials_are_read_from_the_sites_settings():
+    from tools.hostinger_sync import env_values
+    text = "A=1\nexport AMAZON_PARTNER_TAG='tag-21'\nAMAZON_CREATORS_CREDENTIAL_ID = abc\nAMAZON_CREATORS_CREDENTIAL_SECRET=\n"
+    assert env_values(text, ["AMAZON_PARTNER_TAG", "AMAZON_CREATORS_CREDENTIAL_ID", "AMAZON_CREATORS_CREDENTIAL_SECRET", "NO"]) == \
+        {"AMAZON_PARTNER_TAG": "tag-21", "AMAZON_CREATORS_CREDENTIAL_ID": "abc"}
