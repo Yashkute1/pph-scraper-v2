@@ -90,7 +90,11 @@ def test_an_answer_that_looks_broken_blanks_nothing(db):
         seed(db, n, price_age=20)
     out = run(db, Api({asin(n): {"offersV2": {"listings": []}} for n in range(20)}))
     assert out["blanked"] == 0 and "ignored" in out["note"]
-    assert row(db, 0, "in_stock, price_at, api_tried") == (1, NOW - timedelta(hours=20), None)
+    assert row(db, 0, "in_stock, price_at") == (1, NOW - timedelta(hours=20))
+    # they go to the back of the queue for an hour, so a run never starves the rest by asking the same ones again
+    from tools.amazon_refresh import refresh
+    assert refresh(db, Api(), NOW + timedelta(minutes=10))["asked"] == 0
+    assert refresh(db, Api(), NOW + timedelta(minutes=61))["asked"] == 20
 
 
 def test_a_stop_keeps_what_was_done_and_says_why(db):
@@ -125,3 +129,11 @@ def test_the_server_refreshes_rolls_up_and_lets_old_prices_expire(db, tmp_path, 
     # no credentials and no new scrape: after a day the roll-up still runs and the price goes
     assert H.amazon_step(db, {}, NOW + timedelta(hours=25), log=lambda s: None) is True
     assert q(db, "SELECT best_price, any_stock FROM products")[0] == (0, 0)
+
+
+def test_a_batch_amazon_returns_nothing_for_blanks_nothing(db):
+    for n in range(25):
+        seed(db, n, price_age=13)
+    out = run(db, Api({asin(n): None for n in range(25)}))
+    assert out["blanked"] == 0 and "ignored" in out["note"]
+    assert row(db, 0, "in_stock, price_at") == (1, NOW - timedelta(hours=13))

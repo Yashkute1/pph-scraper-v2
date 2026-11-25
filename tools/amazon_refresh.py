@@ -12,6 +12,7 @@ from pph.group import AMAZON
 from pph.sql_db import _rows, _time
 
 AGE = timedelta(hours=12)
+AGAIN = timedelta(hours=1)        # when an answer looks broken, ask about the same offers again this much later
 
 
 def due(db, now):
@@ -30,7 +31,7 @@ def refresh(db, api, now, deadline=None, clock=time.monotonic):
         if a:
             by_asin.setdefault(a, []).append(r)
     asins = list(by_asin)
-    asked = priced = returned = no_offer = 0
+    asked = priced = judged = empty = 0
     note, unpriced = "", []
     for i in range(0, len(asins), MAX_ASINS):
         if deadline is not None and clock() >= deadline:
@@ -49,9 +50,8 @@ def refresh(db, api, now, deadline=None, clock=time.monotonic):
                 kind, price = classify(item) if item else ("absent", None)
             except Exception:
                 continue                                  # one malformed item must not cost the others
-            if item:
-                returned += 1
-                no_offer += kind == "missing"
+            judged += 1
+            empty += kind in ("absent", "missing")
             for r in by_asin[a]:
                 new = apply({**r, "in_stock": bool(r["in_stock"])}, kind, price, image_of(item), now) if item else {}
                 if not new.get("price_at"):
@@ -61,9 +61,14 @@ def refresh(db, api, now, deadline=None, clock=time.monotonic):
                     cur.execute("UPDATE offers SET price=%s, mrp=%s, in_stock=%s, image=%s, price_at=%s, api_tried=%s WHERE id=%s",
                                 (new["price"], new["mrp"], 1 if new["in_stock"] else 0, new["image"], _time(new["price_at"]), now, r["id"]))
                 priced += 1
-    # Most items coming back with no offer data means the API is broken, not that everything stopped being sold.
-    if returned >= MISSING_MIN_ITEMS and no_offer * 2 > returned:
-        return {"asked": asked, "priced": priced, "blanked": 0, "note": "; ".join(x for x in (note, f"blanks ignored: {no_offer} of {returned} without offers") if x)}
+    # Most answers holding no offer at all means the API is broken, not that everything stopped being sold. Nothing is
+    # blanked (a price still expires at a day old); these go to the back of the queue for a while.
+    if judged >= MISSING_MIN_ITEMS and empty * 2 > judged:
+        for oid in unpriced:
+            with db.cursor() as cur:
+                cur.execute("UPDATE offers SET api_tried=%s WHERE id=%s", (now - AGE + AGAIN, oid))
+        ignored = f"blanks ignored: {empty} of {judged} without offers"
+        return {"asked": asked, "priced": priced, "blanked": 0, "note": "; ".join(x for x in (note, ignored) if x)}
     for oid in unpriced:
         with db.cursor() as cur:
             cur.execute("UPDATE offers SET in_stock=0, price_at=NULL, api_tried=%s WHERE id=%s", (now, oid))

@@ -180,11 +180,15 @@ def _time(s):
     return datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ") if isinstance(s, str) else s
 
 
-def _confirmed(o, old):
+def _confirmed(o, old, started):
     """An Amazon offer as it is stored. A price the API did not answer for never replaces what it did confirm; one it
-    answered for without a price loses the confirmation. Photos are kept only when the API gave them."""
+    answered for without a price loses the confirmation. An answer older than what the server has since heard is
+    ignored. Photos are kept only when the API gave them."""
     if o.get("api"):
-        return dict(o, price_at=_time(o.get("price_at")), image=o.get("image") or "")
+        at = _time(o.get("price_at"))
+        heard = [t for t in ((old or {}).get("price_at"), (old or {}).get("api_tried")) if t]
+        if not heard or max(heard) <= (at or started):
+            return dict(o, price_at=at, image=o.get("image") or "")
     if old is None:
         return dict(o, price_at=None, image="")
     return dict(o, price=old["price"], mrp=old["mrp"], in_stock=bool(old["in_stock"]), price_at=old["price_at"], image=old["image"])
@@ -221,13 +225,13 @@ def write_store(db, store, offers, now, blocked, started=None, note="", complete
         run = {"store": store, "started": started or now, "finished": now, "status": status, "fetched": len(unique),
                "written": 0, "previous_count": previous, "note": note}
         if unique and status != "failed":
-            kept = {r["id"]: r for r in _rows(cur, "SELECT id, history, price, mrp, in_stock, image, price_at FROM offers WHERE store=%s", (store,))}
+            kept = {r["id"]: r for r in _rows(cur, "SELECT id, history, price, mrp, in_stock, image, price_at, api_tried FROM offers WHERE store=%s", (store,))}
             existing = {i: r["history"] for i, r in kept.items()}
             day = now.strftime("%Y-%m-%d")
             rows = []
             for oid, o in unique.items():
                 if store == AMAZON:
-                    o = _confirmed(o, kept.get(oid))
+                    o = _confirmed(o, kept.get(oid), started or now)
                 old = json.loads(existing[oid]) if existing.get(oid) else []
                 doc = dict(o, last_seen=now, first_seen=now, missed_runs=0,
                            history=_history(old, day, o["price"], o.get("in_stock", True), store))

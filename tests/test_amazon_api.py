@@ -468,14 +468,48 @@ def test_token_without_expires_in_is_reused():
     assert sum("/auth/o2/token" in c[0] for c in f.calls) == 1
 
 
-def test_probe_summary_lists_each_item_with_its_availability():
-    from tools.amazon_api_probe import summarize
+def test_probe_prints_counts_and_no_amazon_data(monkeypatch, capsys):
+    """The probe runs in a public repository's logs: it may say what came back, never which products or at what price."""
+    from tools import amazon_api_probe as probe
     body = json.dumps({"itemsResult": {"items": [
-        {"asin": "B000000001", "offersV2": {"listings": [{"isBuyBoxWinner": True, "price": {"money": {"amount": 1499.0}},
-                                                          "availability": {"type": "AVAILABLE_DATE", "message": "Available: 5 Dec"}}]}},
+        {"asin": "B000000001", "itemInfo": {"title": {"displayValue": "Secret Title"}},
+         "images": {"primary": {"large": {"url": "https://m.media-amazon.com/images/I/secret.jpg"}}},
+         "offersV2": {"listings": [{"isBuyBoxWinner": True, "price": {"money": {"amount": 1499.0}},
+                                    "availability": {"type": "AVAILABLE_DATE", "message": "Available: 5 Dec"}}]}},
         {"asin": "B000000002"}]}})
-    assert summarize(body) == ["B000000001 AVAILABLE_DATE price=1499.0 msg=Available: 5 Dec", "B000000002 no-offer"]
-    assert summarize("not json") == []
+    assert probe.summarize(body) == ["items: 2, with a photo address: 1", "AVAILABLE_DATE: 1", "no-offer: 1"]
+    assert probe.summarize("not json") == []
+    answers = [(200, json.dumps({"access_token": "T", "expires_in": 3600})), (200, body)]
+    monkeypatch.setattr(probe, "post", lambda *a: answers.pop(0))
+    for k, v in ENV.items():
+        monkeypatch.setenv(k, v)
+    assert probe.main(["B000000001", "B000000002"]) == 0
+    printed = capsys.readouterr().out
+    assert "getItems: HTTP 200" in printed and "items: 2" in printed
+    for secret in ("B000000001", "Secret", "1499", "secret.jpg", "Available:"):
+        assert secret not in printed
+
+
+def test_a_rejected_photo_request_is_asked_again_without_photos():
+    """If the live API does not take the photo resource, prices must still be confirmed."""
+    bad = (400, json.dumps({"errors": [{"code": "ValidationException"}]}))
+    f = Fake(TOKEN_OK, bad, ok_items("B000000001"), ok_items("B000000002"))
+    api = f.api()
+    assert list(api.get_items(["B000000001"])) == ["B000000001"]
+    assert list(api.get_items(["B000000002"])) == ["B000000002"]
+    asked = [body["resources"] for url, body, h in f.calls if "getItems" in url]
+    assert ["images.primary.large" in r for r in asked] == [True, False, False]
+    assert all("offersV2.listings.price" in r for r in asked)
+
+
+def test_a_request_rejected_for_another_reason_still_stops_and_keeps_asking_for_photos():
+    bad = (400, json.dumps({"errors": [{"code": "ValidationException"}]}))
+    f = Fake(TOKEN_OK, bad, bad, ok_items("B000000001"))
+    api = f.api()
+    with pytest.raises(ApiStop, match="HTTP 400"):
+        api.get_items(["B000000001"])
+    api.get_items(["B000000001"])
+    assert "images.primary.large" in f.calls[-1][1]["resources"]
 
 
 def test_available_date_makes_an_offer_the_scraper_called_out_of_stock_buyable():

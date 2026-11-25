@@ -92,7 +92,8 @@ def apply(offer, kind, price, image="", now=None):
 TOKEN_HOSTS = {"3.1": "api.amazon.com", "3.2": "api.amazon.co.uk", "3.3": "api.amazon.co.jp"}
 GET_ITEMS = "https://creatorsapi.amazon/catalog/v1/getItems"
 MARKETPLACE = "www.amazon.in"
-RESOURCES = ["itemInfo.title", "offersV2.listings.price", "offersV2.listings.availability", "images.primary.large"]
+PHOTO = "images.primary.large"
+RESOURCES = ["itemInfo.title", "offersV2.listings.price", "offersV2.listings.availability", PHOTO]
 MAX_ASINS = 10
 MIN_GAP = 1.0
 DEFAULT_EXPIRES = 3600     # seconds a token is kept when the answer does not say
@@ -164,6 +165,7 @@ class AmazonApi:
         self._token = None
         self._token_until = 0.0
         self._last_start = None
+        self._resources = list(RESOURCES)
 
     def _call(self, url, body, headers):
         """One network call, started at least MIN_GAP after the previous one."""
@@ -197,23 +199,32 @@ class AmazonApi:
         self._token, self._token_until = token, self._clock() + expires - 120
         return token
 
-    def get_items(self, asins):
-        """ASIN -> raw item for the ASINs the API returned. An ASIN it did not return is absent."""
-        if len(asins) > MAX_ASINS:
-            raise ValueError(f"at most {MAX_ASINS} ASINs a call")
+    def _ask(self, asins, resources):
+        """(status, text) of one getItems request, waiting out "too many requests"."""
         body = {"itemIds": list(asins), "itemIdType": "ASIN", "partnerTag": self._creds["tag"],
-                "marketplace": MARKETPLACE, "resources": RESOURCES}
+                "marketplace": MARKETPLACE, "resources": resources}
         for attempt in range(len(RETRY_WAITS) + 1):
             headers = {"Authorization": f"Bearer {self._bearer()}", "x-marketplace": MARKETPLACE}
             status, text = self._call(GET_ITEMS, body, headers)
             if "associatenoteligible" in text.lower():
                 raise _stop(status, text, self._secrets)
-            if status == 429 and attempt < len(RETRY_WAITS):
-                self._sleep(RETRY_WAITS[attempt])
-                continue
-            if status != 200:
-                raise _stop(status, text, self._secrets)
-            break
+            if status != 429 or attempt == len(RETRY_WAITS):
+                return status, text
+            self._sleep(RETRY_WAITS[attempt])
+
+    def get_items(self, asins):
+        """ASIN -> raw item for the ASINs the API returned. An ASIN it did not return is absent."""
+        if len(asins) > MAX_ASINS:
+            raise ValueError(f"at most {MAX_ASINS} ASINs a call")
+        status, text = self._ask(asins, self._resources)
+        if status == 400 and PHOTO in self._resources:
+            # Prices matter more than photos: if the request is refused, try it once without the photo.
+            fewer = [r for r in self._resources if r != PHOTO]
+            status, text = self._ask(asins, fewer)
+            if status == 200:
+                self._resources = fewer
+        if status != 200:
+            raise _stop(status, text, self._secrets)
         try:
             items = json.loads(text)["itemsResult"].get("items") or []
             return {i["asin"]: i for i in items if isinstance(i, dict) and isinstance(i.get("asin"), str)}

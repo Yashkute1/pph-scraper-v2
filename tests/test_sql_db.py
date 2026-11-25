@@ -394,3 +394,20 @@ def test_the_first_deploy_seeds_the_time_from_recent_sightings_once(db):
         cur.execute("UPDATE offers SET price_at=NULL")
     ensure_indexes(db)
     assert row(db, 1, "price_at")[0] is None
+
+
+@pytest.mark.parametrize("server_confirmed", [True, False])
+def test_an_older_scrape_never_undoes_a_newer_answer_from_the_server(db, server_confirmed):
+    from pph.sql_db import write_store
+    write_store(db, "amazon", [am(1, 900, day(0))], day(0), blocked=False)
+    asked = day(0) + timedelta(hours=5)
+    with db.cursor() as cur:                       # five hours later the server asked: a new price, or none any more
+        if server_confirmed:
+            cur.execute("UPDATE offers SET price=700, mrp=700, price_at=%s, api_tried=%s", (asked, asked))
+        else:
+            cur.execute("UPDATE offers SET in_stock=0, price_at=NULL, api_tried=%s", (asked,))
+    write_store(db, "amazon", [am(1, 900, day(0) + timedelta(hours=2))], day(0) + timedelta(hours=6), blocked=False)
+    assert row(db, 1, "price, in_stock, price_at") == ((700, 1, asked) if server_confirmed else (900, 0, None))
+    newer = day(0) + timedelta(hours=8)
+    write_store(db, "amazon", [am(1, 650, newer)], day(0) + timedelta(hours=9), blocked=False)
+    assert row(db, 1, "price, in_stock, price_at") == (650, 1, newer)

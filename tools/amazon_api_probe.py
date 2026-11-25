@@ -5,6 +5,7 @@ Amazon's own error or result text, never the credentials.
 
 Reads AMAZON_CREATORS_CREDENTIAL_ID, AMAZON_CREATORS_CREDENTIAL_SECRET, AMAZON_CREATORS_CREDENTIAL_VERSION and
 AMAZON_PARTNER_TAG from the environment."""
+import collections
 import json
 import os
 import sys
@@ -30,23 +31,18 @@ def post(url, body, headers):
 
 
 def summarize(text):
-    """One line per item: ASIN, availability type, price and Amazon's availability message (public product data only)."""
+    """What came back, as counts only: these logs are public, and Amazon's data may not be republished."""
     try:
         items = json.loads(text)["itemsResult"].get("items") or []
     except (ValueError, KeyError, AttributeError, TypeError):
         return []
-    lines = []
+    kinds, photos = collections.Counter(), 0
     for item in items:
         listings = ((item.get("offersV2") or {}).get("listings") or [])
-        if not listings:
-            lines.append(f"{item.get('asin')} no-offer")
-            continue
-        l = next((x for x in listings if x.get("isBuyBoxWinner")), listings[0])
-        av = l.get("availability") or {}
-        price = ((l.get("price") or {}).get("money") or {}).get("amount")
-        msg = av.get("message")
-        lines.append(f"{item.get('asin')} {av.get('type')} price={price}" + (f" msg={msg}" if msg else ""))
-    return lines
+        l = next((x for x in listings if x.get("isBuyBoxWinner")), listings[0]) if listings else None
+        kinds["no-offer" if l is None else str((l.get("availability") or {}).get("type"))[:30]] += 1
+        photos += bool((((item.get("images") or {}).get("primary") or {}).get("large") or {}).get("url"))
+    return [f"items: {len(items)}, with a photo address: {photos}"] + [f"{k}: {n}" for k, n in sorted(kinds.items())]
 
 
 def main(asins):
@@ -77,7 +73,8 @@ def main(asins):
     print(f"getItems: HTTP {status}")
     for line in summarize(text):
         print(line)
-    print(text[:1500])
+    if status != 200:
+        print(text[:300])                      # Amazon's error text, which holds no product data
     return 0 if status == 200 else 1
 
 
