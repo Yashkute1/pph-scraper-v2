@@ -310,3 +310,87 @@ def test_stored_amazon_history_is_cleared_only_when_asked(db, tmp_path):
     assert [r[0] for r in q(db, "SELECT history FROM offers WHERE store='amazon'")] == [None, None]
     assert q(db, "SELECT history FROM offers WHERE store='a'")[0][0] != None
     assert clear_amazon_history(db) == {"cleared": 0}
+
+
+def am(n, price=1000, price_at=None, api=False, in_stock=True, gid=None):
+    x = dict(o("amazon", n, price, in_stock, gid), url=f"https://www.amazon.in/dp/B{n:09d}",
+             image="https://m.media-amazon.com/api.jpg" if price_at else "https://m.media-amazon.com/scraped.jpg")
+    if price_at:
+        x.update(price_at=price_at.strftime("%Y-%m-%dT%H:%M:%SZ"), api=True)
+    if api:
+        x["api"] = True
+    return x
+
+
+def row(db, n, cols="price, mrp, in_stock, price_at, image"):
+    got = q(db, f"SELECT {cols} FROM offers WHERE url=%s", f"https://www.amazon.in/dp/B{n:09d}")
+    return got[0] if got else None
+
+
+def test_an_unconfirmed_amazon_scrape_never_replaces_a_confirmed_price(db):
+    from pph.sql_db import write_store
+    write_store(db, "amazon", [am(1, 900, day(0))], day(0), blocked=False)
+    write_store(db, "amazon", [am(1, 111, in_stock=False)], day(0) + timedelta(hours=6), blocked=False)
+    assert row(db, 1) == (900, 900, 1, day(0), "https://m.media-amazon.com/api.jpg")
+
+
+def test_a_new_unconfirmed_amazon_offer_has_no_time_and_no_photo(db):
+    from pph.sql_db import write_store
+    write_store(db, "amazon", [am(2)], day(0), blocked=False)
+    assert row(db, 2)[3:] == (None, "")
+
+
+def test_the_api_saying_not_for_sale_drops_the_confirmed_price(db):
+    from pph.sql_db import write_store
+    write_store(db, "amazon", [am(1, 900, day(0))], day(0), blocked=False)
+    write_store(db, "amazon", [am(1, 900, api=True, in_stock=False)], day(0) + timedelta(hours=6), blocked=False)
+    assert row(db, 1)[2:4] == (0, None)
+
+
+def test_amazon_offers_the_server_keeps_fresh_are_not_aged_out(db):
+    from pph.sql_db import write_store
+    write_store(db, "amazon", [am(n, 900, day(0)) for n in range(5)], day(0), blocked=False)
+    for d in (1, 2, 3):
+        with db.cursor() as cur:                      # the server refresh confirmed number 4 an hour before this run
+            cur.execute("UPDATE offers SET price_at=%s WHERE url LIKE %s", (day(d) - timedelta(hours=1), "%B000000004"))
+        write_store(db, "amazon", [am(n, 900, day(d)) for n in range(4)], day(d), blocked=False)
+    assert row(db, 4, "missed_runs, in_stock") == (3, 1)
+    with db.cursor() as cur:
+        cur.execute("UPDATE offers SET price_at=%s WHERE url LIKE %s", (day(19), "%B000000004"))
+    write_store(db, "amazon", [am(n, 900, day(20)) for n in range(4)], day(20), blocked=False)
+    assert row(db, 4) is not None                     # unseen by the scrape for 20 days, confirmed a day ago
+    write_store(db, "amazon", [am(n, 900, day(40)) for n in range(4)], day(40), blocked=False)
+    assert row(db, 4) is None
+
+
+def test_a_fresh_amazon_offer_survives_its_group_being_seen_at_another_address(db):
+    from pph.sql_db import write_store
+    write_store(db, "amazon", [am(1, 900, day(0), gid="g"), am(2, 950, day(0), gid="g")], day(0), blocked=False)
+    write_store(db, "amazon", [am(1, 900, day(0), gid="g")], day(0) + timedelta(hours=6), blocked=False)
+    assert row(db, 2) is not None
+
+
+def test_kept_alive_amazon_rows_do_not_make_the_next_run_partial(db):
+    from pph.sql_db import write_store
+    write_store(db, "amazon", [am(n, 900, day(0)) for n in range(10)], day(0), blocked=False)
+    run = write_store(db, "amazon", [am(n, 900, day(1)) for n in range(6)], day(1), blocked=False)
+    assert run["status"] == "ok"
+
+
+def test_the_first_deploy_seeds_the_time_from_recent_sightings_once(db):
+    from pph.sql_db import ensure_indexes, write_store
+    now = datetime.utcnow().replace(microsecond=0)
+    write_store(db, "amazon", [am(1)], now - timedelta(hours=2), blocked=False)
+    write_store(db, "amazon", [am(2)], now - timedelta(hours=30), blocked=False)
+    write_store(db, "a", [o("a", 1)], now, blocked=False)
+    with db.cursor() as cur:
+        cur.execute("UPDATE offers SET last_seen=%s WHERE url LIKE %s", (now - timedelta(hours=2), "%B000000001"))
+        cur.execute("UPDATE offers SET last_seen=%s WHERE url LIKE %s", (now - timedelta(hours=30), "%B000000002"))
+        cur.execute("ALTER TABLE offers DROP COLUMN price_at")
+    ensure_indexes(db)
+    assert row(db, 1, "price_at")[0] == now - timedelta(hours=2) and row(db, 2, "price_at")[0] is None
+    assert q(db, "SELECT price_at FROM offers WHERE store='a'")[0][0] is None
+    with db.cursor() as cur:
+        cur.execute("UPDATE offers SET price_at=NULL")
+    ensure_indexes(db)
+    assert row(db, 1, "price_at")[0] is None

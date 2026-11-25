@@ -12,16 +12,15 @@ from datetime import datetime, timedelta
 from urllib.parse import unquote, urlsplit
 
 from .benchmarks import build_lookup
-from .group import rollup
+from .group import AMAZON, AMAZON_MAX_AGE, rollup
 from .merge import merge_map
 from .normalize import recategorize
-from .group import AMAZON
 from .store_db import BATCH, DELETE_AFTER, MISSED_LIMIT, _history, gate, offer_id  # noqa: F401  (shared rules)
 
 SIZE_BUDGET = int(2.5 * 1024 ** 3)       # Hostinger gives each database 3 GB
 
 OFFER_COLS = ["id", "store", "url", "title", "price", "mrp", "in_stock", "image", "brand", "category", "model_key",
-              "group_id", "specs", "history", "last_seen", "first_seen", "missed_runs"]
+              "group_id", "specs", "history", "last_seen", "first_seen", "missed_runs", "price_at"]
 PRODUCT_COLS = ["group_id", "title", "brand", "category", "category_slug", "brand_slug", "image", "best_price",
                 "best_store", "best_url", "mrp", "any_stock", "store_count", "stores", "offers", "low_90d", "updated_at",
                 "specs", "facets", "drop_pct", "spread_pct", "benchmark"]
@@ -161,6 +160,34 @@ def ensure_indexes(db):
     with db.cursor() as cur:
         for s in SCHEMA:
             cur.execute(s)
+        _add_amazon_times(cur)
+
+
+def _add_amazon_times(cur):
+    """Add the columns for when the Amazon API confirmed a price and when it was last asked. The first time only, an
+    Amazon price seen in the last day counts as confirmed then, so the site does not go blank before the first refresh."""
+    cur.execute("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'offers'")
+    have = {r[0] for r in cur.fetchall()}
+    if "api_tried" not in have:
+        cur.execute("ALTER TABLE offers ADD COLUMN IF NOT EXISTS api_tried DATETIME NULL")
+    if "price_at" not in have:
+        cur.execute("ALTER TABLE offers ADD COLUMN IF NOT EXISTS price_at DATETIME NULL")
+        cur.execute("UPDATE offers SET price_at=last_seen WHERE store=%s AND price_at IS NULL AND last_seen >= UTC_TIMESTAMP() - INTERVAL 24 HOUR", (AMAZON,))
+
+
+def _time(s):
+    """A "YYYY-MM-DDTHH:MM:SSZ" text (as the scrape file carries it) as a naive UTC datetime."""
+    return datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ") if isinstance(s, str) else s
+
+
+def _confirmed(o, old):
+    """An Amazon offer as it is stored. A price the API did not answer for never replaces what it did confirm; one it
+    answered for without a price loses the confirmation. Photos are kept only when the API gave them."""
+    if o.get("api"):
+        return dict(o, price_at=_time(o.get("price_at")), image=o.get("image") or "")
+    if old is None:
+        return dict(o, price_at=None, image="")
+    return dict(o, price=old["price"], mrp=old["mrp"], in_stock=bool(old["in_stock"]), price_at=old["price_at"], image=old["image"])
 
 
 def _upsert_offers(cur, rows):
@@ -173,7 +200,8 @@ def _upsert_offers(cur, rows):
 def offer_row(oid, o):
     return [oid, o["store"], o["url"], o["title"], o["price"], o.get("mrp"), 1 if o.get("in_stock", True) else 0, o.get("image") or "",
             o.get("brand"), o.get("category"), o.get("model_key"), o.get("group_id"), _json(o.get("specs") or {}),
-            _json(o.get("history") or []), o.get("last_seen"), o.get("first_seen") or o.get("last_seen"), int(o.get("missed_runs") or 0)]
+            _json(o.get("history") or []), o.get("last_seen"), o.get("first_seen") or o.get("last_seen"), int(o.get("missed_runs") or 0),
+            _time(o.get("price_at"))]
 
 
 def write_store(db, store, offers, now, blocked, started=None, note="", complete=True):
@@ -193,11 +221,13 @@ def write_store(db, store, offers, now, blocked, started=None, note="", complete
         run = {"store": store, "started": started or now, "finished": now, "status": status, "fetched": len(unique),
                "written": 0, "previous_count": previous, "note": note}
         if unique and status != "failed":
-            cur.execute("SELECT id, history FROM offers WHERE store=%s", (store,))
-            existing = {r[0]: r[1] for r in cur.fetchall()}
+            kept = {r["id"]: r for r in _rows(cur, "SELECT id, history, price, mrp, in_stock, image, price_at FROM offers WHERE store=%s", (store,))}
+            existing = {i: r["history"] for i, r in kept.items()}
             day = now.strftime("%Y-%m-%d")
             rows = []
             for oid, o in unique.items():
+                if store == AMAZON:
+                    o = _confirmed(o, kept.get(oid))
                 old = json.loads(existing[oid]) if existing.get(oid) else []
                 doc = dict(o, last_seen=now, first_seen=now, missed_runs=0,
                            history=_history(old, day, o["price"], o.get("in_stock", True), store))
@@ -207,15 +237,20 @@ def write_store(db, store, offers, now, blocked, started=None, note="", complete
         if ok:
             # Every offer this run saw now has last_seen = now, so "unseen" is everything older for this store.
             unseen = "store=%s AND (last_seen IS NULL OR last_seen<%s)"
+            # The server keeps confirming Amazon offers the scrape no longer meets: those are neither marked out of
+            # stock nor deleted while their price is confirmed.
+            stale = lambda age: (" AND (price_at IS NULL OR price_at<%s)", (now - age,)) if store == AMAZON else ("", ())
+            day_old, day_args = stale(AMAZON_MAX_AGE)
+            gone_old, gone_args = stale(DELETE_AFTER)
             # A part this run saw at a new address: the store moved it, and the old address now answers 404. It goes now
             # instead of lingering as a dead "Check store" link for the 14 days an unseen offer is kept.
             seen = sorted({o["group_id"] for o in unique.values() if o.get("group_id")})
             for i in range(0, len(seen), BATCH):
                 part = seen[i:i + BATCH]
-                cur.execute(f"DELETE FROM offers WHERE {unseen} AND group_id IN ({', '.join(['%s'] * len(part))})", (store, now, *part))
+                cur.execute(f"DELETE FROM offers WHERE {unseen}{day_old} AND group_id IN ({', '.join(['%s'] * len(part))})", (store, now, *day_args, *part))
             cur.execute(f"UPDATE offers SET missed_runs=missed_runs+1, aged_at=%s WHERE {unseen} AND (aged_at IS NULL OR aged_at<%s)", (now, store, now, now))
-            cur.execute(f"UPDATE offers SET in_stock=0 WHERE {unseen} AND missed_runs>=%s", (store, now, MISSED_LIMIT))
-            cur.execute(f"DELETE FROM offers WHERE {unseen} AND last_seen<%s", (store, now, now - DELETE_AFTER))
+            cur.execute(f"UPDATE offers SET in_stock=0 WHERE {unseen} AND missed_runs>=%s{day_old}", (store, now, MISSED_LIMIT, *day_args))
+            cur.execute(f"DELETE FROM offers WHERE {unseen} AND last_seen<%s{gone_old}", (store, now, now - DELETE_AFTER, *gone_args))
         cur.execute("INSERT INTO scrape_runs (store, started, finished, status, fetched, written, previous_count, note) "
                     "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
                     (store, run["started"], now, status, run["fetched"], run["written"], previous, (note or "")[:255]))
@@ -237,7 +272,7 @@ def stale_stores(db, stores, now, hours):
 def read_offers(db):
     """Offers in the shape group.rollup expects (the same as a MongoDB document)."""
     with db.cursor() as cur:
-        rows = _rows(cur, "SELECT id, store, url, title, price, mrp, in_stock, image, brand, category, group_id, specs, history, last_seen FROM offers")
+        rows = _rows(cur, "SELECT id, store, url, title, price, mrp, in_stock, image, brand, category, group_id, specs, history, last_seen, price_at FROM offers")
     for r in rows:
         r["_id"] = r.pop("id")
         r["in_stock"] = bool(r["in_stock"])

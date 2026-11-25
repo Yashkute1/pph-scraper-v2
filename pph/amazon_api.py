@@ -1,4 +1,6 @@
-"""What Amazon's Creators API says about a product, and what that means for a scraped offer. Pure, no I/O."""
+"""What Amazon's Creators API says about a product, and what that means for a scraped offer.
+
+Only a price the API gave is ever shown (with the time it gave it, `price_at`), and only a photo address it gave is kept."""
 import collections
 import http.client
 import json
@@ -8,6 +10,8 @@ import re
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 _ASIN = re.compile(r"/dp/([A-Z0-9]{10})")
 
@@ -43,10 +47,36 @@ def classify(item):
     return kind, price
 
 
-def apply(offer, kind, price):
+IMAGE_HOSTS = ("media-amazon.com", "ssl-images-amazon.com", "images-amazon.com")
+
+
+def image_of(item):
+    """The large product photo's address as the API gives it, when it is https on an Amazon image host; else ""."""
+    url = ((((item or {}).get("images") or {}).get("primary") or {}).get("large") or {}).get("url")
+    if not isinstance(url, str) or len(url) > 2000:
+        return ""
+    try:
+        u = urlsplit(url)
+    except ValueError:
+        return ""
+    host = u.hostname or ""
+    return url if u.scheme == "https" and any(host == h or host.endswith("." + h) for h in IMAGE_HOSTS) else ""
+
+
+def utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+
+
+def unconfirmed(offer):
+    """The offer as scraped, without its photo: only a photo address the API gave is ever stored."""
+    return dict(offer, image="") if offer.get("image") else offer
+
+
+def apply(offer, kind, price, image="", now=None):
     """A corrected copy of the offer. Out of stock, preorder and missing mean not in stock; in stock means in stock;
     other leaves stock as it was. A usable price replaces the scraped one, and the mrp never ends up below it."""
-    out = dict(offer)
+    out = dict(offer, api=True, image=image)       # the API answered for this offer; only its photo is kept
+    out.pop("price_at", None)
     if kind in ("out_of_stock", "preorder", "missing"):
         out["in_stock"] = False
     elif kind == "in_stock":
@@ -54,6 +84,7 @@ def apply(offer, kind, price):
     if price is not None and price > 0 and kind in ("in_stock", "other"):
         out["price"] = round(price)
         out["mrp"] = max(out.get("mrp") or 0, out["price"])
+        out["price_at"] = (now or utcnow()).strftime("%Y-%m-%dT%H:%M:%SZ")     # when the API confirmed this price
     return out
 
 
@@ -61,7 +92,7 @@ def apply(offer, kind, price):
 TOKEN_HOSTS = {"3.1": "api.amazon.com", "3.2": "api.amazon.co.uk", "3.3": "api.amazon.co.jp"}
 GET_ITEMS = "https://creatorsapi.amazon/catalog/v1/getItems"
 MARKETPLACE = "www.amazon.in"
-RESOURCES = ["itemInfo.title", "offersV2.listings.price", "offersV2.listings.availability"]
+RESOURCES = ["itemInfo.title", "offersV2.listings.price", "offersV2.listings.availability", "images.primary.large"]
 MAX_ASINS = 10
 MIN_GAP = 1.0
 DEFAULT_EXPIRES = 3600     # seconds a token is kept when the answer does not say
@@ -201,21 +232,23 @@ def _type_name(item):
     return name if isinstance(name, str) and _TYPE_NAME.fullmatch(name) else "OTHER"
 
 
-def enrich(offers, api, deadline=None, clock=time.monotonic):
+def enrich(offers, api, deadline=None, clock=time.monotonic, now=utcnow):
     """(corrected offers, note). Each distinct ASIN is asked once, ten at a time. Offers without an ASIN, and ASINs
     the API did not return, keep the scraped values. If the API stops, or the deadline passes between batches, what
     was corrected stays and the rest is as scraped. When most returned items have no offer data the API is taken to
     be broken and "missing" does not mean out of stock in this run. The note holds only counts and the stop reason."""
     asins = list(dict.fromkeys(a for a in map(asin_of, (o.get("url") for o in offers)) if a))
     total = sum(1 for o in offers if asin_of(o.get("url")))
-    items, asked, reason = {}, set(), ""
+    items, asked, reason, times = {}, set(), "", {}
     try:
         for i in range(0, len(asins), MAX_ASINS):
             if deadline is not None and clock() >= deadline:
                 reason = "time limit"
                 break
             batch = asins[i:i + MAX_ASINS]
-            items.update(api.get_items(batch))
+            got = api.get_items(batch)
+            times.update(dict.fromkeys(got, now()))
+            items.update(got)
             asked.update(batch)
     except ApiStop as e:
         reason = str(e)
@@ -234,19 +267,19 @@ def enrich(offers, api, deadline=None, clock=time.monotonic):
         if a in asked:
             in_asked += 1
         if a not in items:
-            out.append(o)
+            out.append(unconfirmed(o))
             not_returned += a in asked
             continue
         if kinds[a] is None:
-            out.append(o)
+            out.append(unconfirmed(o))
             unreadable += 1
             continue
         kind, price = kinds[a]
         checked += 1
         if kind == "missing" and ignore_missing:
-            out.append(o)
+            out.append(unconfirmed(o))
             continue
-        out.append(apply(o, kind, price))
+        out.append(apply(o, kind, price, image_of(items[a]), times[a]))
         counts[kind] += 1
         if kind == "other":
             others[_type_name(items[a])] += 1

@@ -1,4 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
 from pph.group import rollup
 
 NOW = datetime(2026, 10, 4, tzinfo=timezone.utc)
@@ -152,15 +155,50 @@ def _week(price):
 
 
 def test_amazon_prices_never_make_a_low_or_a_drop():
-    row, = rollup([offer("amazon", 800, history=[{"d": "2026-10-01", "p": 500}]), offer("a", 1000, history=_week(1500))], NOW)
+    row, = rollup([amazon(800, history=[{"d": "2026-10-01", "p": 500}]), offer("a", 1000, history=_week(1500))], NOW)
     assert row["best_store"] == "amazon" and row["low_90d"] == 1000 and row["drop_pct"] == 0
 
 
 def test_a_drop_is_read_from_other_stores_only():
-    row, = rollup([offer("amazon", 1200, history=_week(100)), offer("a", 1000, history=_week(1500))], NOW)
+    row, = rollup([amazon(1200, history=_week(100)), offer("a", 1000, history=_week(1500))], NOW)
     assert row["best_store"] == "a" and row["drop_pct"] == round(500 / 1500 * 100, 1)
 
 
 def test_a_product_only_amazon_sells_has_no_low():
-    row, = rollup([offer("amazon", 800, history=_week(900))], NOW)
+    row, = rollup([amazon(800, history=_week(900))], NOW)
     assert row["low_90d"] is None and row["drop_pct"] == 0
+
+
+def amazon(price, age_hours=1, **kw):
+    at = None if age_hours is None else (NOW - timedelta(hours=age_hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return offer("amazon", price, price_at=at, **kw)
+
+
+@pytest.mark.parametrize("age", [25, None])
+def test_an_old_or_unconfirmed_amazon_price_is_blanked_and_goes_last(age):
+    row, = rollup([amazon(800, age, image="https://m.media-amazon.com/a.jpg"), offer("a", 1000)], NOW)
+    assert (row["best_store"], row["best_price"], row["image"]) == ("a", 1000, "")
+    last = row["offers"][-1]
+    assert (last["store"], last["price"], last["in_stock"], last["checked"]) == ("amazon", 0, False, None)
+
+
+def test_a_part_only_amazon_sells_with_no_fresh_price_shows_none():
+    row, = rollup([amazon(800, 25, mrp=1600, image="https://m.media-amazon.com/a.jpg")], NOW)
+    assert (row["best_price"], row["any_stock"], row["mrp"], row["image"]) == (0, False, None, "")
+
+
+def test_an_out_of_stock_store_price_ranks_above_a_blank_amazon_one():
+    row, = rollup([amazon(800, 25), offer("a", 1000, in_stock=False)], NOW)
+    assert (row["best_store"], row["best_price"]) == ("a", 1000)
+
+
+def test_a_price_under_a_day_old_is_shown_with_the_time_the_api_gave_it():
+    row, = rollup([amazon(800, 23), offer("a", 1000)], NOW)
+    assert (row["best_store"], row["best_price"], row["any_stock"]) == ("amazon", 800, True)
+    assert row["offers"][0]["checked"] == (NOW - timedelta(hours=23)).replace(tzinfo=None)
+
+
+def test_another_stores_photo_wins_over_amazons():
+    a = amazon(800, image="https://m.media-amazon.com/a.jpg")
+    assert rollup([a, offer("a", 1000, image="https://a.test/i.jpg")], NOW)[0]["image"] == "https://a.test/i.jpg"
+    assert rollup([a, offer("a", 1000)], NOW)[0]["image"] == "https://m.media-amazon.com/a.jpg"

@@ -117,7 +117,7 @@ def test_get_items_returns_items_by_asin():
     assert url == "https://creatorsapi.amazon/catalog/v1/getItems"
     assert body["itemIds"] == ["B0AAAAAAA1", "B0AAAAAAA2", "B0AAAAAAA3"]
     assert body["itemIdType"] == "ASIN" and body["marketplace"] == "www.amazon.in" and body["partnerTag"] == "shadow-21"
-    assert body["resources"] == ["itemInfo.title", "offersV2.listings.price", "offersV2.listings.availability"]
+    assert body["resources"] == ["itemInfo.title", "offersV2.listings.price", "offersV2.listings.availability", "images.primary.large"]
     assert headers["Authorization"] == "Bearer T" and headers["x-marketplace"] == "www.amazon.in"
 
 
@@ -482,3 +482,52 @@ def test_available_date_makes_an_offer_the_scraper_called_out_of_stock_buyable()
     """Amazon's AVAILABLE_DATE listings have Add to Cart and a delivery date; the scraper had marked 12 of 17 sampled ones out of stock."""
     out, _ = enrich([offer("B000000001", price=5000, in_stock=False)], FakeApi({"B000000001": api_item("B000000001", "AVAILABLE_DATE", 6633.0)}))
     assert (out[0]["price"], out[0]["in_stock"]) == (6633, True)
+
+
+# ---- what is confirmed by the API: price, time and photo ----
+from datetime import datetime as _dt
+
+from pph.amazon_api import enrich, image_of
+
+AT = _dt(2026, 11, 25, 10, 30, 5)
+PHOTO = "https://m.media-amazon.com/images/I/api.jpg"
+
+
+def with_photo(it, url=PHOTO):
+    return dict(it, images={"primary": {"large": {"url": url}}})
+
+
+class Items:
+    def __init__(self, *items): self.items = {i["asin"]: i for i in items}
+    def get_items(self, asins): return {a: self.items[a] for a in asins if a in self.items}
+
+
+def scraped(asin, **kw):
+    return dict({"url": f"https://www.amazon.in/dp/{asin}", "price": 1000, "mrp": 1200, "in_stock": True,
+                 "image": "https://m.media-amazon.com/images/I/scraped.jpg"}, **kw)
+
+
+def test_the_api_photo_is_read_and_only_from_amazon():
+    assert image_of(with_photo({"asin": "B0"})) == PHOTO
+    assert image_of({"asin": "B0"}) == ""
+    assert image_of(with_photo({"asin": "B0"}, "https://evil.test/x.jpg")) == ""
+    assert image_of(with_photo({"asin": "B0"}, "http://m.media-amazon.com/x.jpg")) == ""
+    assert "images.primary.large" in __import__("pph.amazon_api", fromlist=["x"]).RESOURCES
+
+
+def test_a_confirmed_offer_carries_the_time_and_the_api_photo():
+    it = dict(with_photo(item("IN_STOCK", 1499.0)), asin="B000000001")
+    out, _ = enrich([scraped("B000000001")], Items(it), now=lambda: AT)
+    assert (out[0]["price"], out[0]["price_at"], out[0]["image"], out[0]["api"]) == (1499, "2026-11-25T10:30:05Z", PHOTO, True)
+
+
+def test_an_answer_without_a_usable_price_is_an_answer_but_confirms_no_price():
+    gone = dict(item("OUT_OF_STOCK"), asin="B000000001")
+    out, _ = enrich([scraped("B000000001")], Items(gone), now=lambda: AT)
+    assert out[0]["api"] and "price_at" not in out[0] and out[0]["in_stock"] is False and out[0]["image"] == ""
+
+
+def test_an_offer_the_api_did_not_answer_has_no_time_and_no_photo():
+    out, _ = enrich([scraped("B000000002")], Items(), now=lambda: AT)
+    assert "api" not in out[0] and "price_at" not in out[0] and out[0]["image"] == ""
+    assert out[0]["price"] == 1000

@@ -1,13 +1,14 @@
 """Collapse per-store offers into one ready-to-serve row per part. Pure, no I/O."""
 import re
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from statistics import median
 
 from .benchmarks import match as match_benchmark
 from .facets import facets_of
 
 AMAZON = "amazon"          # no price history, low or drop is ever built from this store's prices
+AMAZON_MAX_AGE = timedelta(hours=24)     # an Amazon price older than this is not shown
 MAX_DISCOUNT = 0.85      # a bigger "discount" is almost always a mismatched or fake MRP
 DROP_MIN_DAYS = 7        # no "price dropped" claim until a week of history exists
 DROP_WINDOW = 30
@@ -47,10 +48,35 @@ def _spread_pct(offers):
 
 
 def _rank(o):
-    return (0 if o.get("in_stock") else 1, o["price"])
+    """In stock first, then cheapest; an offer with no price to show goes after every priced one."""
+    return (0 if o.get("in_stock") else 1, 0 if o["price"] else 1, o["price"])
+
+
+def _utc(t):
+    """A time as naive UTC, from a datetime or "YYYY-MM-DDTHH:MM:SSZ"; None when there is none."""
+    if isinstance(t, str):
+        try:
+            t = datetime.fromisoformat(t.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if not isinstance(t, datetime):
+        return None
+    return t.astimezone(timezone.utc).replace(tzinfo=None) if t.tzinfo else t
+
+
+def _current(o, now):
+    """The offer as it may be shown now. An Amazon price counts only for a day after the API confirmed it; after that,
+    or without a confirmation, it has no price, no stock claim and no photo."""
+    if o["store"] != AMAZON:
+        return o
+    at = _utc(o.get("price_at"))
+    if at and _utc(now) - at <= AMAZON_MAX_AGE:
+        return dict(o, last_seen=at)
+    return dict(o, price=0, mrp=None, in_stock=False, image="", last_seen=None)
 
 
 def _row(gid, members, now, benchmarks=None):
+    members = [_current(o, now) for o in members]
     per_store = {}
     for o in members:                                   # cheapest in-stock offer per store
         cur = per_store.get(o["store"])
@@ -65,7 +91,8 @@ def _row(gid, members, now, benchmarks=None):
     points = [h["p"] for o in tracked for h in (o.get("history") or []) if h.get("p")]
     return {
         "group_id": gid, "title": best["title"], "brand": best.get("brand"), "category": best.get("category"),
-        "image": best.get("image") or next((o["image"] for o in offers + members if o.get("image")), ""),
+        # another store's photo wins; Amazon's is used only when there is no other (the site loads it from Amazon)
+        "image": next((o["image"] for o in sorted([best] + offers + members, key=lambda o: o["store"] == AMAZON) if o.get("image")), ""),
         "best_price": best["price"], "best_store": best["store"], "best_url": best["url"], "mrp": mrp,
         "any_stock": any(o.get("in_stock") for o in offers), "store_count": len(offers),
         "stores": [o["store"] for o in offers],
