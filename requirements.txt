@@ -4,3 +4,5 @@ patchright==1.63.0
 playwright==1.63.0
 pymongo==4.10.1
 pymysql==1.1.2
+# Seals the Amazon scrape file (pph/seal.py).
+PyNaCl==1.6.2

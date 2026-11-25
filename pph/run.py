@@ -15,6 +15,7 @@ from . import DB_NAME
 from .adapters import ADAPTERS
 from .adapters.common import EmptyListingError, IncompleteError
 from .fetch import BlockedError, Fetcher_, TimeBudgetExceeded
+from .group import AMAZON
 from .normalize import normalize
 from .stores import STORES
 from . import store_db
@@ -76,11 +77,19 @@ def _write(store, offers, started, blocked, note, complete, db=None, now=None, s
 
 
 def _save(store, offers, started, blocked, note, complete):
-    """Keep a scrape the database refused, so `replay` can write it later instead of fetching everything again."""
+    """Keep a scrape the database refused, so `replay` can write it later instead of fetching everything again.
+    The Amazon file is sealed to the server's key; without that key nothing is written and None is returned."""
+    doc = {"store": store, "started": started, "blocked": blocked, "note": note, "complete": complete, "offers": offers}
+    if store == AMAZON:
+        from . import seal
+        try:
+            doc = seal.seal(doc, seal.PUBLIC.read_text())
+        except Exception as e:                      # fail closed: Amazon data is never saved in the clear
+            print(f"Amazon scrape not saved: no usable server key ({type(e).__name__})", file=sys.stderr)
+            return None
     OUT.mkdir(parents=True, exist_ok=True)
     path = OUT / f"{store}-offers.json"
-    path.write_text(json.dumps({"store": store, "started": started, "blocked": blocked, "note": note,
-                                "complete": complete, "offers": offers}, default=str))
+    path.write_text(json.dumps(doc, default=str))
     return path
 
 
@@ -166,8 +175,11 @@ def scrape(store, dry_run=False, max_pages=None, time_budget=None, db=None, now=
     elif save:
         # The database is written from the Hostinger server itself (tools/hostinger_sync.sh replays this file there),
         # so this machine never connects to it. Hostinger's firewall refuses some GitHub machines on the MySQL port.
-        _save(store, offers, started, blocked, note, complete)
-        run = {"store": store, "started": started, "status": "blocked" if blocked else "saved" if offers else "failed",
+        path = _save(store, offers, started, blocked, note, complete)
+        status = "blocked" if blocked else "saved" if offers else "failed"
+        if path is None and status == "saved":
+            status, note = "withheld", "; ".join(x for x in (note, "no server key: Amazon scrape not saved") if x)
+        run = {"store": store, "started": started, "status": status,
                "fetched": len({o["url"] for o in offers}), "written": 0, "previous_count": 0, "note": note}
     else:
         try:
@@ -177,19 +189,24 @@ def scrape(store, dry_run=False, max_pages=None, time_budget=None, db=None, now=
         except Exception as e:
             run = {"store": store, "started": started, "status": "failed", "fetched": len(offers), "written": 0,
                    "previous_count": 0, "note": "database: " + safe_error(e)}
-            if offers and _unreachable(e):
-                _save(store, offers, started, blocked, note, complete)
+            if offers and _unreachable(e) and _save(store, offers, started, blocked, note, complete):
                 run["note"] += "; scrape saved for replay"
     run["seconds"] = seconds
     _report(store, run)
     if run["status"] == "blocked" or (dry_run and blocked):
         return BLOCKED_EXIT, run
-    return (0 if run["status"] in ("ok", "dry-run", "saved") and (not dry_run or (offers and complete)) else 1), run
+    return (0 if run["status"] in ("ok", "dry-run", "saved", "withheld") and (not dry_run or (offers and complete)) else 1), run
 
 
 def replay_cmd(path, db=None, now=None, sleep=time.sleep):
     """Write a scrape that `scrape` saved because the database could not be reached."""
     saved = json.loads(pathlib.Path(path).read_text())
+    if "sealed" in saved:
+        from . import seal
+        key = os.environ.get("PPH_AMAZON_KEY")
+        if not key:
+            raise RuntimeError("sealed scrape and no key")
+        saved = seal.unseal(saved, pathlib.Path(key).read_text())
     started = datetime.fromisoformat(saved["started"]) if isinstance(saved["started"], str) else saved["started"]
     run = _write(saved["store"], saved["offers"], started, saved["blocked"], saved["note"], saved["complete"], db=db,
                  now=now, sleep=sleep)

@@ -195,6 +195,11 @@ def main(argv=None):
     from pph import run as R
     R.OUT = state / "out"                               # replay's reports go here, not into the code checkout
     try:
+        from pph import seal
+        os.environ["PPH_AMAZON_KEY"] = str(seal.ensure_key(state, EXPORTS))
+    except Exception as e:                              # without a key only the Amazon file cannot be written
+        print("amazon key:", R.safe_error(e), file=sys.stderr)
+    try:
         code, summary = sync(repo, state)
         job = run_job(repo, state)
         # Only after the database changed, and once at the start so the files exist. A failure here leaves the last good files.
