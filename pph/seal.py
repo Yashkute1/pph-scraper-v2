@@ -20,14 +20,21 @@ def _b64(raw):
     return base64.b64encode(raw).decode()
 
 
+class Unopenable(Exception):
+    """This server cannot open a sealed file, and trying again will not change that."""
+
+
 def seal(doc, public_b64):
     box = SealedBox(PublicKey(base64.b64decode(public_b64.strip())))
     return {"sealed": _b64(box.encrypt(gzip.compress(json.dumps(doc, default=str).encode())))}
 
 
 def unseal(envelope, private_b64):
-    box = SealedBox(PrivateKey(base64.b64decode(private_b64.strip())))
-    return json.loads(gzip.decompress(box.decrypt(base64.b64decode(envelope["sealed"]))))
+    try:
+        box = SealedBox(PrivateKey(base64.b64decode(private_b64.strip())))
+        return json.loads(gzip.decompress(box.decrypt(base64.b64decode(envelope["sealed"]))))
+    except Exception as e:
+        raise Unopenable(f"sealed scrape cannot be opened ({type(e).__name__})") from None
 
 
 def ensure_key(state, exports):

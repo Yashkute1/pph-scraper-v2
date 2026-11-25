@@ -204,8 +204,8 @@ def replay_cmd(path, db=None, now=None, sleep=time.sleep):
     if "sealed" in saved:
         from . import seal
         key = os.environ.get("PPH_AMAZON_KEY")
-        if not key:
-            raise RuntimeError("sealed scrape and no key")
+        if not key or not pathlib.Path(key).is_file():
+            raise seal.Unopenable("sealed scrape and no key")
         saved = seal.unseal(saved, pathlib.Path(key).read_text())
     started = datetime.fromisoformat(saved["started"]) if isinstance(saved["started"], str) else saved["started"]
     run = _write(saved["store"], saved["offers"], started, saved["blocked"], saved["note"], saved["complete"], db=db,

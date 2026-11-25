@@ -111,3 +111,5 @@ def test_an_unopenable_amazon_file_does_not_stop_the_other_stores(tmp_path, keys
     assert code == 1 and status == {"a": "ok", "amazon": "error"}
     assert db.offers.count_documents({}) == 1 and db.products_v2.count_documents({}) == 1
     assert "Secret" not in json.dumps(out)
+    # a file this server cannot open will never open: it is not tried again, so the other stores are not aged again
+    assert sync(repo, state, db=db, now=NOW, log=lambda s: None)[1]["note"] == "nothing new"

@@ -1,5 +1,6 @@
 """Fetch one listing page per HTML store and save a trimmed copy as a test fixture.
-Run from GitHub Actions (capture.yml); the stores are not reachable from every network."""
+Run from GitHub Actions (capture.yml); the stores are not reachable from every network. Amazon is not captured: its
+data may not be republished, so tests/fixtures/html/amazon.html is made up by hand."""
 import pathlib, re, sys, time
 from pph.fetch import Fetcher_
 
@@ -9,7 +10,6 @@ PAGES = {
     "mdcomputers": ("http", "https://mdcomputers.in/catalog/graphics-card"),
     "theitdepot": ("http", "https://www.theitdepot.com/Graphic_Card"),
     "flipkart": ("http", "https://www.flipkart.com/search?q=graphics+card"),
-    "amazon": ("stealth", "https://www.amazon.in/s?k=graphics+card&i=computers"),
 }
 STRIP = [r"<script(?![^>]*ld\+json)[^>]*>.*?</script>", r"<style[^>]*>.*?</style>", r"<svg[^>]*>.*?</svg>",
          r"<!--.*?-->", r"<noscript[^>]*>.*?</noscript>", r'\sstyle="[^"]*"', r"data:image/[^\"' )]+"]

@@ -113,33 +113,45 @@ def sync(repo, state, db=None, now=None, log=print):
     if not head:
         return 0, {"written": [], "note": "nothing new"}
     names = [n for n in git(repo, "ls-tree", "--name-only", head).split() if n.endswith("-offers.json.gz")]
-    results, code = [], 0
+    # A commit tried before: only the stores that failed are written again. Writing a store a second time would count
+    # every part its scrape did not meet as missed once more.
+    tries = state / "tries"
+    seen = tries.read_text().split() if tries.exists() else []
+    again = bool(seen) and seen[0] == head
+    n = int(seen[1]) + 1 if again else 1
+    done = set(seen[2].split(",")) if again and len(seen) > 2 else set()
+    results, code, retry = [], 0, False
     with tempfile.TemporaryDirectory() as tmp:
-        for name in sorted(names):
+        for name in sorted(x for x in names if x not in done):
             raw = subprocess.run(["git", "-C", str(repo), "show", f"{head}:{name}"], check=True, capture_output=True).stdout
             path = pathlib.Path(tmp) / name[:-3]
             path.write_bytes(gzip.decompress(raw))
             try:
                 c, run = R.replay_cmd(path, db=db, now=now)
                 results.append({"store": run["store"], "status": run["status"], "written": run["written"]})
-                code = code or (0 if run["status"] in ("ok", "partial", "blocked") else 1)
+                if run["status"] in ("ok", "partial", "blocked"):
+                    done.add(name)
+                else:
+                    code, retry = 1, True
             except Exception as e:                       # one store's failure must not stop the others
+                from pph.seal import Unopenable
                 results.append({"store": name.split("-")[0], "status": "error", "note": R.safe_error(e)})
                 code = 1
+                if isinstance(e, Unopenable):
+                    done.add(name)                       # it never will open: not a reason to try the commit again
+                else:
+                    retry = True
         if names:
             R.rollup_cmd(db=db, now=now)
             stale = R.health_cmd(26, db=db, now=now)[1]["stale"]
         else:
             stale = []
-    # A store that could not be written (the database was down) is tried again on the next run, the whole commit with
-    # it: writing a store twice on one day keeps one history point and counts a missed offer once.
-    tries = state / "tries"
-    n = int(tries.read_text().split()[1]) + 1 if tries.exists() and tries.read_text().split()[0] == head else 1
-    if code == 0 or n >= TRIES:
+    # A store that could not be written (the database was down) is tried again on the next run.
+    if not retry or n >= TRIES:
         (state / "written").write_text(head + "\n")
         tries.unlink(missing_ok=True)
     else:
-        tries.write_text(f"{head} {n}\n")
+        tries.write_text(f"{head} {n} {','.join(sorted(done))}\n")
     summary = {"commit": head[:9], "written": results, "stale": stale, "try": n,
                "at": (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")}
     (state / "last.json").write_text(json.dumps(summary, indent=1))

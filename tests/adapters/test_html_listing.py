@@ -138,3 +138,11 @@ def test_whole_card_text_marks_sold_out():
             '<span class="p">₹69,990</span></div></body></html>')
     a, b = list(iter_offers(cfg, FakeFetcher({CFG["start_urls"][0]: html}, default=EMPTY)))
     assert (a["in_stock"], b["in_stock"]) == (False, True)
+
+
+def test_no_page_captured_from_amazon_is_kept_in_the_repository():
+    """The repository is public and Amazon's data may not be republished: its test page is made up, and capture skips it."""
+    page = (FX / "amazon.html").read_text(encoding="utf-8")
+    assert "Made-up page" in page and len(page) < 40_000
+    capture = (FX.parent.parent.parent / "tools" / "capture_fixtures.py").read_text()
+    assert "amazon.in" not in capture

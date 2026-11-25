@@ -124,3 +124,32 @@ def test_amazon_credentials_are_read_from_the_sites_settings():
     text = "A=1\nexport AMAZON_PARTNER_TAG='tag-21'\nAMAZON_CREATORS_CREDENTIAL_ID = abc\nAMAZON_CREATORS_CREDENTIAL_SECRET=\n"
     assert env_values(text, ["AMAZON_PARTNER_TAG", "AMAZON_CREATORS_CREDENTIAL_ID", "AMAZON_CREATORS_CREDENTIAL_SECRET", "NO"]) == \
         {"AMAZON_PARTNER_TAG": "tag-21", "AMAZON_CREATORS_CREDENTIAL_ID": "abc"}
+
+
+def test_a_retry_writes_only_the_stores_that_failed(repo, tmp_path, monkeypatch):
+    """Writing a store again ages every part its scrape did not meet, so a retry must not touch the ones that worked."""
+    from pph import run as R
+    monkeypatch.setattr(R, "OUT", tmp_path / "out")
+    monkeypatch.setattr(R, "rollup_cmd", lambda **kw: (0, {}))
+    monkeypatch.setattr(R, "health_cmd", lambda *a, **kw: (0, {"stale": []}))
+    state = tmp_path / "state"
+    state.mkdir()
+    publish(repo, {"a": [offer(1)], "b": [dict(offer(2), store="b", url="https://b.test/p/2")]})
+    db = mongomock.MongoClient().pph_site
+    real, replayed, fail = R.replay_cmd, [], {"b"}
+
+    def replay(path, **kw):
+        store = path.name.split("-")[0]
+        replayed.append(store)
+        if store in fail:
+            raise RuntimeError("database down")
+        return real(path, **kw)
+    monkeypatch.setattr(R, "replay_cmd", replay)
+    assert sync(repo, state, db=db, now=NOW, log=lambda s: None)[0] == 1
+    fail.clear()
+    code, out = sync(repo, state, db=db, now=NOW, log=lambda s: None)
+    assert code == 0 and replayed == ["a", "b", "b"] and [r["store"] for r in out["written"]] == ["b"]
+    publish(repo, {"a": [offer(3)]})                          # a new commit starts afresh
+    replayed.clear()
+    sync(repo, state, db=db, now=NOW, log=lambda s: None)
+    assert "a" in replayed
