@@ -325,3 +325,9 @@ def test_list_waits_out_a_site_error_then_skips_the_shard(tmp_path, monkeypatch)
     monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout: (_ for _ in ()).throw(urllib.error.URLError("down")))
     assert C.cmd_list(str(tmp_path / "todo2.txt"), 0, 1, 10) == 0
     assert waits == [15, 45, 90] and (tmp_path / "todo2.txt").read_text() == ""
+
+
+def test_amazon_photos_are_never_cut():
+    urls = ["https://m.media-amazon.com/images/I/a.jpg", "https://images-na.ssl-images-amazon.com/b.jpg", "https://a.test/c.jpg",
+            "https://media-amazon.com.evil.test/d.jpg"]
+    assert [u for _, u in todo(urls, {}, 0, 1, 10)] == ["https://a.test/c.jpg", "https://media-amazon.com.evil.test/d.jpg"]

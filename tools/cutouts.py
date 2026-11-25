@@ -24,6 +24,9 @@ import shutil
 import sys
 from urllib.parse import urlsplit
 
+# The same hosts as pph/amazon_api.py; repeated because this file also runs on its own in the cutouts workflow.
+IMAGE_HOSTS = ("media-amazon.com", "ssl-images-amazon.com", "images-amazon.com")
+
 MAX_SIDE = 640
 WORK_SIDE = 1024                           # photos are cut at this size, then reduced
 MODEL = "birefnet-general-lite"
@@ -77,10 +80,16 @@ def safe_url(url):
         return "." in host and not host.endswith((".local", ".internal", ".localhost")) and host != "localhost"
 
 
+def amazon_photo(url):
+    """Amazon's photos may not be copied or edited."""
+    host = (urlsplit(url).hostname or "").lower()
+    return any(host == h or host.endswith("." + h) for h in IMAGE_HOSTS)
+
+
 def todo(urls, done, shard, shards, limit):
     out, seen = [], set()
     for url in urls:
-        if not url or not safe_url(url):
+        if not url or not safe_url(url) or amazon_photo(url):
             continue
         key = cutout_key(url)
         if key in seen or key in done or not in_shard(key, shard, shards):
