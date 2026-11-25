@@ -11,6 +11,8 @@ from datetime import datetime
 from pymongo import MongoClient
 
 from pph import DB_NAME
+from pph.group import AMAZON
+from tools import public_data
 
 PER_CATEGORY = 20
 EXTRA = 5
@@ -27,66 +29,54 @@ def _plain(v):
     return v
 
 
-def export(db, per_category=PER_CATEGORY):
-    p = db.products_v2
+def _pick(rows, per_category):
+    """A few parts of every kind the site's tests need: the most stocked of each category, and the awkward ones."""
     picked = {}
 
-    def take(cursor):
-        for d in cursor:
+    def take(some):
+        for d in some:
             picked.setdefault(d["group_id"], d)
 
-    for cat in sorted(c for c in p.distinct("category_slug") if c):
-        take(p.find({"category_slug": cat}).sort([("any_stock", -1), ("store_count", -1), ("best_price", 1)]).limit(per_category))
-    take(p.find({"store_count": 1, "any_stock": True}).limit(EXTRA))
-    take(p.find({"any_stock": False}).limit(EXTRA))
-    take(p.find({}).sort("best_price", -1).limit(2))
-    longest = max(p.find({}, {"group_id": 1, "title": 1}), key=lambda d: len(d.get("title") or ""), default=None)
-    if longest:
-        take(p.find({"group_id": longest["group_id"]}))
-    ids = list(picked)
-    offers = []
-    for d in db.offers.find({"group_id": {"$in": ids}}):
-        offers.append(dict(_plain(d), id=d["_id"]))
+    ranked = sorted(rows, key=lambda d: (not d["any_stock"], -d["store_count"], d["best_price"], d["group_id"]))
+    for cat in sorted({d["category_slug"] for d in rows if d["category_slug"]}):
+        take([d for d in ranked if d["category_slug"] == cat][:per_category])
+    take([d for d in ranked if d["store_count"] == 1 and d["any_stock"]][:EXTRA])
+    take([d for d in ranked if not d["any_stock"]][:EXTRA])
+    take(sorted(rows, key=lambda d: (-d["best_price"], d["group_id"]))[:2])
+    take(sorted(rows, key=lambda d: (-len(d.get("title") or ""), d["group_id"]))[:1])
+    return picked
+
+
+def export(db, per_category=PER_CATEGORY):
+    everything = list(db.offers.find({}))
+    bench = list(db.benchmarks.find({}, {"_id": 0}))
+    picked = _pick(public_data.products(everything, bench), per_category)
+    offers = [dict(_plain(d), id=d["_id"]) for d in public_data.public_offers(everything) if d.get("group_id") in picked]
     runs = []
-    for store in sorted(db.scrape_runs.distinct("store")):
+    for store in sorted(s for s in db.scrape_runs.distinct("store") if s != AMAZON):
         last = db.scrape_runs.find({"store": store}).sort("started", -1).limit(1)
         runs.extend(_plain(r) for r in last)
-    bench = [_plain(b) for b in db.benchmarks.find({}).sort([("bucket", 1), ("rank", 1)]).limit(BENCHMARKS)]
+    bench = sorted(bench, key=lambda b: (str(b.get("bucket")), b.get("rank") or 0))[:BENCHMARKS]
     return {"exported": _plain(datetime.utcnow()), "products": [_plain(d) for d in picked.values()],
-            "offers": offers, "runs": runs, "benchmarks": bench}
+            "offers": offers, "runs": runs, "benchmarks": [_plain(b) for b in bench]}
 
 
 def export_sql(db, per_category=PER_CATEGORY):
     """The same sample from the MySQL database."""
-    from pph.sql_db import JSON_PRODUCT, _rows
+    from pph.sql_db import _rows
+    picked = _pick(public_data.sql_products(db), per_category)
     with db.cursor() as cur:
-        def prods(where, args=(), order="any_stock DESC, store_count DESC, best_price ASC", limit=per_category):
-            return _rows(cur, f"SELECT * FROM products WHERE {where} ORDER BY {order} LIMIT {int(limit)}", args)
-        picked = {}
-        cur.execute("SELECT DISTINCT category_slug FROM products WHERE category_slug <> '' ORDER BY category_slug")
-        for (cat,) in cur.fetchall():
-            for d in prods("category_slug=%s", (cat,)):
-                picked.setdefault(d["group_id"], d)
-        for d in prods("store_count=1 AND any_stock=1", limit=EXTRA) + prods("any_stock=0", limit=EXTRA) + \
-                prods("1=1", order="best_price DESC", limit=2) + prods("1=1", order="CHAR_LENGTH(title) DESC", limit=1):
-            picked.setdefault(d["group_id"], d)
-        for d in picked.values():
-            for k in JSON_PRODUCT:
-                d[k] = json.loads(d[k]) if d.get(k) else ({} if k != "stores" and k != "offers" else [])
-            d["any_stock"] = bool(d["any_stock"])
-            if not d["benchmark"]:
-                d["benchmark"] = None
-        ids = list(picked)
         offers = []
+        ids = list(picked)
         if ids:
             marks = ",".join(["%s"] * len(ids))
-            for r in _rows(cur, f"SELECT * FROM offers WHERE group_id IN ({marks})", ids):
+            for r in _rows(cur, f"SELECT * FROM offers WHERE store <> %s AND group_id IN ({marks})", [AMAZON, *ids]):
                 r["in_stock"] = bool(r["in_stock"])
                 r["specs"] = json.loads(r["specs"] or "{}")
                 r["history"] = json.loads(r["history"] or "[]")
                 offers.append(_plain(r))
         runs = [_plain(r) for r in _rows(cur, "SELECT store, started, finished, status, fetched, written, previous_count, note FROM scrape_runs r "
-                                               "WHERE started = (SELECT MAX(started) FROM scrape_runs x WHERE x.store = r.store) ORDER BY store")]
+                                               "WHERE store <> %s AND started = (SELECT MAX(started) FROM scrape_runs x WHERE x.store = r.store) ORDER BY store", (AMAZON,))]
         bench = [json.loads(r["doc"]) for r in _rows(cur, f"SELECT doc FROM benchmarks ORDER BY bucket, `rank` LIMIT {BENCHMARKS}")]
     return {"exported": _plain(datetime.utcnow()), "products": [_plain(d) for d in picked.values()],
             "offers": offers, "runs": runs, "benchmarks": bench}
